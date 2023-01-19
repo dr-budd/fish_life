@@ -1,0 +1,1528 @@
+---
+title: "lifespan model"
+output:
+  html_notebook:
+    code_folding: hide
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+current_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+knitr::opts_knit$set(root.dir=normalizePath(paste0(current_directory)))
+```
+
+```{r load_libraries, include=FALSE}
+## LOAD LIBRARIES ----
+
+library(viridis) 
+library(ggpubr) 
+library(ggrepel)
+library(plotmo)
+library(tidyverse) 
+```
+
+```{r}
+## CALCAULTE PROMOTER PEARSON CORRELATIONS ----
+
+## import metadata
+nested_elastic_metadata_summary <- read.csv("DataFiles/09.00_nested_elastic_metadata_summary.csv")
+
+## "five copy" metadata
+nested_elastic_metadata_summary_fc <- read.csv("DataFiles/08.00_nested_elastic_metadata_summary_fc.csv")
+
+## import promoters
+promoter_coefs_long <- read.csv("DataFiles/09.00_promoter_coefs_long.csv")
+
+## import CpG density data
+cpg_oe_data_full_z <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+  ##  move the species (col "X") names to row names
+  column_to_rownames(., var="X") %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0) %>%
+  ## format as matrix
+  as.matrix(.)
+
+## get a vector of predictive promoters (from all 10 models)
+predictive_promoters <- unique(promoter_coefs_long$promoter_id)
+
+## edit cpg oe data
+cpg_oe_data_pp_ls_z <- as.data.frame(cpg_oe_data_full_z) %>%
+  ## move the rownames back to a column
+  rownames_to_column(., var = "organism_name") %>%
+  ## add the lifespan from the metadata
+  left_join(nested_elastic_metadata_summary %>% 
+              select(organism_name, mean_lifespan) %>%
+              unique(.)) %>%
+  ## select only predictive promoters
+  select(organism_name, mean_lifespan, 
+         all_of(predictive_promoters))
+
+## create empty df for correlation data
+corr_data <- NULL
+
+## loop through list of promoters and get lifespan correlations
+for (promoter in predictive_promoters) {
+  temp_corr <- cor.test(cpg_oe_data_pp_ls_z[[promoter]], 
+                   cpg_oe_data_pp_ls_z$mean_lifespan, 
+                   method = "pearson")
+  temp_cor <- temp_corr$estimate
+  temp_p <- temp_corr$p.value
+  temp_row <- c(promoter, temp_cor, temp_p)
+  corr_data <- rbind.data.frame(corr_data, temp_row, 
+                                make.row.names = FALSE)
+}
+
+## name the columns
+names(corr_data) <- c("promoter_id", "corr", "p_value")
+
+## edit the data frame
+corr_data <- corr_data %>%
+  ## convert from character to numeric
+  mutate(corr=as.numeric(corr), 
+         p_value=as.numeric(p_value)) %>%
+  ## annotate for sig cors only
+  mutate(sig_corr = ifelse(p_value > 0.05, 
+                      NA, 
+                      corr))
+
+## average promoter coefs
+predictive_promoters_avg <- promoter_coefs_long %>%
+  group_by(promoter_id) %>%
+  mutate(mean_coef = mean(coef)) %>%
+  select(promoter_id, mean_coef, number_of_models) %>%
+  mutate(abs_mean_coef = abs(mean_coef)) %>%
+  unique(.) %>%
+  ## add correlation data
+  left_join(., corr_data) %>%
+  ## if negative, positive or varied
+  mutate(npv = ifelse(mean_coef < 0 & corr < 0,
+                                 "Negative",
+                                 ifelse(mean_coef > 0 & corr > 0,
+                                        "Positive",
+                                        "Varied"))) %>%
+  ## arrange by 
+  arrange(mean_coef) %>%
+  mutate(promoter_id_f = fct_inorder(factor(promoter_id))) %>%
+  ## add significance
+  mutate(sigyn = ifelse(is.na(sig_corr),
+                        "No",
+                        "Yes"))
+
+
+## export 
+write.csv(predictive_promoters_avg, "DataFiles/10.00_predictive_promoters_avg.csv", row.names=FALSE)
+
+```
+
+```{r}
+## ADD ADDITIONAL INFO TO METADATA ----
+
+## cpg o/e ----
+
+## read in cpg oe data (keep NA)
+cpg_oe_data_full <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+  column_to_rownames(., var="X") %>%
+  ## format as matrix
+  as.matrix(.)
+
+## remove species not in the model (if any)
+no_meta_fish <- setdiff(rownames(cpg_oe_data_full), unique(nested_elastic_metadata_summary$organism_name))
+cpg_oe_data <- cpg_oe_data_full[!rownames(cpg_oe_data_full) %in% no_meta_fish, ]
+
+## keep only promoters in the models
+cpg_oe_data_pp <- cpg_oe_data[ , colnames(cpg_oe_data) %in% predictive_promoters]
+
+## hit length ----
+
+## read in hit length data (all fish)
+hit_len_data_full <- read.csv("DataFiles/06.00_hit_len_data_full.csv") %>%
+  ## move column X to rows
+  column_to_rownames(., var="X") %>%
+  ## format as matrix
+  as.matrix(.)
+
+## remove species not in the model (no lifespan info)
+no_meta_fish <- setdiff(rownames(hit_len_data_full), unique(nested_elastic_metadata_summary$assembly_id))
+hit_len_data <- hit_len_data_full[!rownames(hit_len_data_full) %in% no_meta_fish, ]
+
+## keep only promoters in the model
+hit_len_data_pp <- hit_len_data[ , colnames(hit_len_data) %in% predictive_promoters]
+
+## percent identity ----
+
+## read in hit percent identity data (all fish)
+hit_pi_data_full <- read.csv("DataFiles/06.00_hit_pi_data_full.csv") %>%
+  ## move column X to rows
+  column_to_rownames(., var="X") %>%
+  ## format as matrix
+  as.matrix(.)
+
+## remove species not in the model
+no_meta_fish <- setdiff(rownames(hit_pi_data_full), unique(nested_elastic_metadata_summary$assembly_id))
+hit_pi_data <- hit_pi_data_full[!rownames(hit_pi_data_full) %in% no_meta_fish, ]
+
+## keep only promoters in the model
+hit_pi_data_pp <- hit_pi_data[ , colnames(hit_pi_data) %in% predictive_promoters]
+
+## add all to metadata ----
+nested_elastic_metadata_sum <- nested_elastic_metadata_summary %>%
+  ## add mean cpg oe (NAs)
+  left_join(., (as.data.frame(cpg_oe_data_pp) %>%
+                  mutate(mean_cpg_oe_pp_nz = rowMeans(., na.rm=TRUE)) %>%
+                  ## also count total num hits
+                  mutate(num_hits_pp = rowSums(!is.na(select(., -mean_cpg_oe_pp_nz)))) %>% 
+                  select(mean_cpg_oe_pp_nz, num_hits_pp) %>%
+                  rownames_to_column(., var = "organism_name")),
+            by = "organism_name") %>%
+              ## add mean cpg oe (zeros)
+  left_join(., (as.data.frame(cpg_oe_data_pp)) %>%
+              ## replace NAs
+              replace(is.na(.), 0) %>%
+              mutate(mean_cpg_oe_pp_z = rowMeans(.)) %>%
+              select(mean_cpg_oe_pp_z) %>%
+              rownames_to_column(., var = "organism_name"),
+            by = "organism_name") %>%
+  ## add mean hit length (NAs)
+  left_join(., (as.data.frame(hit_len_data_pp) %>%
+                  mutate(mean_hit_len_pp_nz = rowMeans(., na.rm=TRUE)) %>%
+                  select(mean_hit_len_pp_nz) %>%
+                  rownames_to_column(., var = "assembly_id")),
+            by = "assembly_id") %>%
+  ## add mean hit length (zeros)
+  left_join(., (as.data.frame(hit_len_data_pp)) %>%
+              ## replace NAs
+              replace(is.na(.), 0) %>%
+              mutate(mean_hit_len_pp_z = rowMeans(.)) %>%
+              select(mean_hit_len_pp_z) %>%
+              rownames_to_column(., var = "assembly_id"),
+            by = "assembly_id") %>%
+  ## add mean percent ident length (NAs)
+  left_join(., (as.data.frame(hit_pi_data_pp) %>%
+                  mutate(mean_hit_pi_pp_nz = rowMeans(., na.rm=TRUE)) %>%
+                  select(mean_hit_pi_pp_nz) %>%
+                  rownames_to_column(., var = "assembly_id")),
+            by = "assembly_id") %>%
+  ## add mean percent ident length (zeros)
+  left_join(., (as.data.frame(hit_pi_data_pp)) %>%
+              ## replace NAs
+              replace(is.na(.), 0) %>%
+              mutate(mean_hit_pi_pp_z = rowMeans(.)) %>%
+              select(mean_hit_pi_pp_z) %>%
+              rownames_to_column(., var = "assembly_id"),
+            by = "assembly_id")
+```
+
+```{r}
+## BAGGING ----
+
+## bag the model estimates
+bagged_metadata_sum <- nested_elastic_metadata_sum %>%
+  group_by(organism_name) %>%
+  mutate(bagged_detrans_predicted_lifespan = mean(detrans_predicted_lifespan), 
+         bagged_log_predicted_lifespan = mean(log_predicted_lifespan),
+         bagged_detrans_absolute_error = abs(mean_lifespan - bagged_detrans_predicted_lifespan), 
+         bagged_detrans_relative_error = (bagged_detrans_absolute_error/mean_lifespan)*100) %>%
+  ## add a column to indicate if genus is Sebastes
+  mutate(genus_s = ifelse(grepl("Sebastes", organism_name),
+                               "Sebastes",
+                               "Other")) %>%
+  ## remove anything model-specific
+  select(-log_predicted_lifespan, -detrans_predicted_lifespan, -log_residuals,
+         -data_set, -partition_number, -log_absolute_error, -log_relative_error, 
+         -detrans_absolute_error, -detrans_relative_error, -model_number, 
+         -data_set_labs) %>%
+  unique(.) %>%
+  as.data.frame(.)
+
+## BAGGING (FC) ----
+
+## bag the model estimates
+bagged_metadata_sum_fc <- nested_elastic_metadata_summary_fc %>%
+  group_by(assembly_id) %>%
+  mutate(bagged_detrans_predicted_lifespan = mean(detrans_predicted_lifespan), 
+         bagged_log_predicted_lifespan = mean(log_predicted_lifespan),
+         bagged_detrans_absolute_error = abs(mean_lifespan - bagged_detrans_predicted_lifespan), 
+         bagged_detrans_relative_error = (bagged_detrans_absolute_error/mean_lifespan)*100) %>%
+  ## add a column to indicate if genus is Sebastes
+  mutate(genus_s = ifelse(grepl("Sebastes", organism_name),
+                          "Sebastes",
+                          "Other")) %>%
+  ## remove anything model-specific
+  select(., -c(log_predicted_lifespan,
+         detrans_predicted_lifespan,
+         log_residuals,
+         partition_number)) %>%
+  unique(.) %>%
+  as.data.frame(.) %>%
+  ## add if reference
+  mutate(representative = ifelse(refseq_category == "na", 
+                                 "no", 
+                                 "yes")) %>%
+  ## remove Gasterosteus aculeatus (no rep or ref genome)
+  filter(organism_name != "Gasterosteus aculeatus") %>%
+  ## add common names
+  mutate(common_name = ifelse(organism_name == "Danio rerio", 
+                              "Zebrafish",
+                              ifelse(organism_name == "Oryzias latipes", 
+                                     "Medaka", 
+                                     ifelse(organism_name == "Salmo salar", 
+                                            "Atlantic salmon",
+                                            ifelse(organism_name == "Astyanax mexicanus", 
+                                                   "Mexican tetra", 
+                                                   ifelse(organism_name == "Anguilla japonica", 
+                                                          "Japanese eel", 
+                                                          ifelse(organism_name == "Larimichthys crocea", 
+                                                                 "Yellow croaker", 
+                                                                 ifelse(organism_name=="Cyprinus carpio", 
+                                                                        "Common carp", 
+                                                                        ifelse(organism_name == "Scleropages formosus", 
+                                                                               "Asian arowana", 
+                                                                               ifelse(organism_name == "Scophthalmus maximus", 
+                                                                               "Turbot", 
+                                                                               "Unknown")))))))))) %>%
+  mutate(species_label = paste0(common_name, " (*", organism_name, "*)")) %>%
+  mutate(sex = ifelse(is.na(sex), 
+                      "Unknown", 
+                      sex))
+```
+
+```{r}
+## create fc table for supplementary
+fc_table <- bagged_metadata_sum_fc %>%
+  mutate(`Predicted lifespan (years)` = round(bagged_detrans_predicted_lifespan, digits=2)) %>%
+  group_by(organism_name) %>%
+  mutate(representative = gsub("yes", "Yes", representative) %>%
+           gsub("no", "No", .), 
+         `Mean predicted lifespan (±SD)` = paste0(round(mean(bagged_detrans_predicted_lifespan), digits=2), 
+                                         " ± ", 
+                                         round(sd(bagged_detrans_predicted_lifespan), digits=2))) %>%
+  select(organism_name,
+         assembly_accession,
+         biosample,
+         b_complete,
+         representative,
+         `Predicted lifespan (years)`, 
+         `Mean predicted lifespan (±SD)`) %>%
+  rename(Species = organism_name,
+         `Assembly accession` = assembly_accession,
+         Biosample = biosample, 
+         `BUSCO completeness score (%)` = b_complete,
+         `Genbank represetative or reference genome (Yes/No)` = representative) %>%
+  arrange(Species) %>%
+  relocate(Species, `Mean predicted lifespan (±SD)`)
+
+## save it
+write.csv(fc_table, "FiguresTables/Table S[fc_table].csv", row.names=FALSE)
+```
+
+```{r}
+## create lifespan prediction file for supplementary
+ls_preds <- bagged_metadata_sum %>%
+  select(organism_name,
+         mean_lifespan, mae_lifespan, mre_lifespan,
+         bagged_detrans_predicted_lifespan, 
+         bagged_detrans_absolute_error, 
+         bagged_detrans_relative_error) %>%
+  unique(.) %>%
+  mutate(mean_lifespan = round(mean_lifespan, digits=2),
+         mae_lifespan = round(mae_lifespan, digits=2),
+         mre_lifespan = round(mre_lifespan, digits=2),
+         bagged_detrans_predicted_lifespan = round(bagged_detrans_predicted_lifespan, digits=2),
+         bagged_detrans_absolute_error = round(bagged_detrans_absolute_error, digits=2),
+         bagged_detrans_relative_error = round(bagged_detrans_relative_error, digits=2)) %>%
+  rename(Species = organism_name,
+         `Known lifespan (years)` = mean_lifespan,
+         `Known lifespan absolute error (years)` = mae_lifespan,
+         `Known lifespan relative error (%)` = mre_lifespan,
+         `Predicted lifespan (years)` = bagged_detrans_predicted_lifespan,
+         `Predicted lifespan absolute error (years)` = bagged_detrans_absolute_error,
+         `Predicted lifespan relative error (%)` = bagged_detrans_relative_error) %>%
+  arrange(Species)
+
+## export it
+write.csv(ls_preds, "FiguresTables/Table S[ls_preds].csv", row.names=FALSE)
+```
+
+```{r fig.width=3, fig.height=3}
+## PLOT LIFESPAN CORRELATION ----
+
+## lifespan correlation plot (for main figure)
+lc <- ggscatter(data = bagged_metadata_sum,
+          x = "log_lifespan", 
+          y = "bagged_log_predicted_lifespan", 
+          add = "reg.line", 
+          xlab = "Known lifespan (ln)", 
+          ylab = "Predicted lifespan (ln)",
+          shape = "genus_s",
+          alpha = 0.7, 
+          size=1.75,
+          ggtheme = theme_bw(),
+          fill = "bagged_detrans_relative_error",
+          legend = "bottom", 
+          legend.title = "Lifespan error (%)") +
+ stat_cor(aes(label = paste(..r.label.., ..rr.label.., 
+                            ..p.label.., sep = "~`,`~")), 
+           label.x.npc = 0.4, 
+           label.y.npc = 0, 
+           size=3.3)+
+  scale_fill_viridis_c(option = "C", trans = "log", 
+                       direction = -1,
+                       breaks=c(0.1, 1, 10, 100))+
+  scale_shape_manual(values=c(21, 23), guide = "none")
+
+# lc
+```
+
+```{r fig.width=3, fig.height=3}
+## CREATE ERROR PLOT ----
+
+## create absolute lifespan data frame (for plotting)
+abs_err_df <- bagged_metadata_sum %>%
+  select(organism_name, bagged_detrans_absolute_error, mae_lifespan, genus_s) %>%
+  pivot_longer(., cols=c(bagged_detrans_absolute_error, mae_lifespan), 
+               values_to = "bagged_absolute_lifespan_error", 
+               names_to = "lifespan_type") %>%
+  mutate(lifespan_type = gsub("bagged_detrans_absolute_error", 
+                              "Predicted lifespan", 
+                              lifespan_type) %>%
+           gsub("mae_lifespan", "Known lifespan", .))
+
+## create relative lifespan data frame (for plotting)
+rel_err_df <- bagged_metadata_sum %>%
+  select(organism_name, bagged_detrans_relative_error, mre_lifespan, genus_s) %>%
+  pivot_longer(., cols=c(bagged_detrans_relative_error, mre_lifespan), 
+               values_to = "bagged_relative_lifespan_error", 
+               names_to = "lifespan_type") %>%
+  mutate(lifespan_type = gsub("bagged_detrans_relative_error", 
+                              "Predicted lifespan", 
+                              lifespan_type) %>%
+           gsub("mre_lifespan", "Known lifespan", .))
+
+## join them
+err_df <- full_join(abs_err_df, rel_err_df)
+
+## create error plot
+abs_err<-ggplot(err_df %>% 
+                  na.omit(.) %>% 
+                  mutate(lifespan_type = gsub("Known lifespan", 
+                                              "Reported lifespan", 
+                                              lifespan_type)),
+                aes(lifespan_type, 
+                    bagged_absolute_lifespan_error, 
+                    fill = bagged_relative_lifespan_error))+
+  geom_boxplot(colour = "black")+
+  scale_fill_viridis_c(option = "C",
+                       direction = -1,
+                       trans = "log",
+                       breaks=c(0.1, 1, 10, 100, 1000),
+                       name = "Lifespan error (%)")+
+  scale_y_log10(limits = c(0.1, 150))+
+  xlab(NULL)+
+  ylab("Lifespan error (years)")+
+  geom_jitter(aes(shape=genus_s), 
+              width = 0.35, 
+              alpha = 0.7, 
+              colour = "black", 
+              size= 1.75)+
+  scale_shape_manual(values=c(21, 23), guide = "none")+
+  theme_bw()+
+  theme(axis.text.x=element_text(size=11, colour = "black"), 
+        legend.position = "bottom", 
+        legend.key.size = unit(0.5, 'cm'),
+        legend.title = element_text(size=9))
+
+# abs_err
+```
+
+```{r}
+## create plot with error label for review
+abs_err_label <- with(bagged_metadata_sum, 
+                      abs_err +
+                        geom_label(aes(x=1,
+                                       y=median(
+                                         bagged_detrans_absolute_error),
+                                       ## label w abs and rel error
+                                       label=paste(
+                                         round(
+                                           median(
+                                             bagged_detrans_absolute_error), 
+                                           digits=2), "years; ",
+                                         round(median(
+                                           bagged_detrans_relative_error), 
+                                           digits=2), "%")),
+                                   fill="white", 
+                                   size=3))
+
+abs_err_label
+
+## export lc and abs_err label for review
+saveRDS(lc, "DataFiles/10.00_lc.rds")
+saveRDS(abs_err_label, "DataFiles/10.00_abs_err_label.rds")
+```
+
+```{r}
+## sd plot
+fc<-ggerrorplot(bagged_metadata_sum_fc, 
+                x = "species_label", 
+                y = "bagged_detrans_predicted_lifespan", 
+                desc_stat = "mean_sd", 
+                color = "black",
+                add.params = list(fill = "b_complete", 
+                                  alpha=0.7))+
+  labs(x="Species", y="Predicted lifespan (years)")+
+  coord_flip()+
+  scale_fill_viridis_c(option="C", direction = -1,
+                       name="Genome\ncompleteness\nscore (%)")+
+  theme_bw()+
+  theme(axis.text.y = ggtext::element_markdown(), ## for italics
+        legend.position="right")+
+  scale_y_continuous(breaks=scales::breaks_pretty(n = 8))+
+  geom_jitter(position = sdamr::position_jitternudge(jitter.width = 0.2,
+                                nudge.x = -0.25),
+    alpha=0.6,
+    aes(shape = sex, fill=b_complete))+
+  scale_shape_manual(values=c(21, 22, 23, 24), name="Sex")
+
+# fc
+```
+
+```{r fig.width=5, fig.height=6}
+## COMBINE FOR MAIN FIGURE (V2) ----
+
+model_plots<-ggarrange(
+  ## ls
+  lc+theme(
+  legend.key.size = unit(0.5, 'cm'),
+  legend.text = element_text(size=6, angle=30, hjust=1, vjust=1.3),
+  legend.title = element_text(size=9)), 
+  ## err
+  abs_err+theme(plot.margin = margin(5.5, 5.5, 15.5, 5.5)), #t, r, b, l
+  nrow=1,
+  widths = c(0.475, 0.525),
+  common.legend = TRUE,
+  legend = "bottom",
+  labels=c("A", "B"))
+
+ggarrange(model_plots, 
+          fc+theme(
+            legend.key.size = unit(0.5, 'cm'),
+            legend.text = element_text(size=6),
+            legend.title = element_text(size=9)),
+          nrow=2, 
+          heights=c(1, 0.6),
+          labels=c("", "C"))
+
+ggsave("FiguresTables/Figure [ls_model].pdf",
+       width = 8.25,
+       height = 7.25,
+       units = "in")
+
+ggsave("FiguresTables/Figure [ls_model].tiff",
+       width = 8.25,
+       height = 7.25,
+       units = "in")
+```
+```{r}
+p_value <- cor.test(bagged_metadata_sum$log_lifespan, 
+                    bagged_metadata_sum$bagged_log_predicted_lifespan)$p.value
+
+paste0("correlation p-value: ", p_value)
+
+```
+
+```{r}
+## PROMOTER PLOT ----
+
+promoter_plot <- with(predictive_promoters_avg, 
+                      ggplot() +
+                        geom_bar(aes(promoter_id_f, 
+                                     y = mean_coef, 
+                                     fill = corr, alpha=sigyn),
+                                 stat = "identity", position = "dodge") +
+                        scale_fill_viridis_c(option = "C", 
+                                             name = "Pearson correlation    ")+
+                        scale_alpha_discrete(range=c(0.4, 1), guide="none")+
+                        scale_y_continuous("Mean weight") +
+                        scale_x_discrete("Promoter ID", 
+                                         limits=promoter_id_f,
+                                    breaks=promoter_id_f[seq(1,length(promoter_id_f),by=10)])+
+                        theme_bw()+
+                        theme(axis.text.x = element_text(angle = 90,hjust = 1, vjust=0, size = 4),
+                              axis.title.x=element_text(size=10),
+                              axis.title.y=element_text(size=10), 
+                              legend.position = "bottom", 
+                              legend.key.size = unit(0.5, 'cm'),
+                              legend.text = element_text(size=6, 
+                                                         angle=30, 
+                                                         hjust=1, 
+                                                         vjust=1.3), 
+                              legend.title = element_text(size=9)))
+
+# promoter_plot
+
+```
+
+
+
+```{r}
+## number of promoters used
+paste0("number of predictive promoters (all models): ", nrow(predictive_promoters_avg))
+paste0("")
+
+## lowest relative error
+paste0("the best lifespan prediction in terms of relative error was ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(., bagged_detrans_relative_error, n=1) %>%
+         pull(organism_name), 
+       " with a known lifespan of ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_relative_error, n=1) %>%
+         pull(mean_lifespan), 
+       " and a predicted lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_relative_error, n=1) %>%
+         pull(bagged_detrans_predicted_lifespan), digits=2), 
+       " (relative error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_relative_error, n=1) %>%
+         pull(bagged_detrans_relative_error), digits=2), 
+       "%)")
+
+## lowest absolute error
+paste0("the best lifespan prediction in terms of absolute error was ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_absolute_error, n=1) %>%
+         pull(organism_name), 
+       " with a known lifespan of ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_absolute_error, n=1) %>%
+         pull(mean_lifespan), 
+       " and a predicted lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_absolute_error, n=1) %>%
+         pull(bagged_detrans_predicted_lifespan), digits=2), 
+       " (absolute error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(bagged_detrans_absolute_error, n=1) %>%
+         pull(bagged_detrans_absolute_error), digits=2), 
+       " years)")
+```
+
+```{r}
+## worst estimates
+
+## highest relative error
+paste0("the worst lifespan prediction in terms of relative error was ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_relative_error) %>%
+         pull(organism_name), 
+       " with a known lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_relative_error) %>%
+         pull(mean_lifespan), digits=2), 
+       " and a predicted lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_relative_error) %>%
+         pull(bagged_detrans_predicted_lifespan), digits=2), 
+       " (relative error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_relative_error) %>%
+         pull(bagged_detrans_relative_error), digits=2), 
+       "%)")
+
+## highest absolute error
+paste0("the worst lifespan prediction in terms of absolute error was ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_absolute_error) %>%
+         pull(organism_name), 
+       " with a known lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_absolute_error) %>%
+         pull(mean_lifespan), digits=2), 
+       " and a predicted lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_absolute_error) %>%
+         pull(bagged_detrans_predicted_lifespan), digits=2), 
+       " (absolute error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_max(bagged_detrans_absolute_error) %>%
+         pull(bagged_detrans_absolute_error), digits=2), 
+       " years)")
+```
+
+```{r}
+## how did the lamprey do?
+
+## lowest blask hits
+paste0("the lifespan prediction for the species with the least number of blast hits was ", 
+       bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(num_hits) %>%
+         pull(organism_name), 
+       " with a known lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(num_hits) %>%
+         pull(mean_lifespan), digits=2), 
+       " and a predicted lifespan of ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(num_hits) %>%
+         pull(bagged_detrans_predicted_lifespan), digits=2), 
+       " (absolute error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(num_hits) %>%
+         pull(bagged_detrans_absolute_error), digits=2), 
+       " years;", 
+       " relative error: ", 
+       round(bagged_metadata_sum %>% filter(organism_name != "Danio rerio") %>%
+         slice_min(num_hits) %>%
+         pull(bagged_detrans_relative_error), digits=2), 
+       " %)")
+```
+
+
+```{r}
+## print some info about the estimates
+
+paste("median absolute error (predicted lifespan):", round(median(bagged_metadata_sum$bagged_detrans_absolute_error), digits=2), "years")
+paste("median relative error (predicted lifespan):", round(median(bagged_metadata_sum$bagged_detrans_relative_error), digits=2), "%")
+paste0("")
+
+paste("median absolute error (known lifespan):", round(median(bagged_metadata_sum$mae_lifespan, na.rm=TRUE), digits=2), "years")
+paste("median relative error (known lifespan):", round(median(bagged_metadata_sum$mre_lifespan, na.rm=TRUE), digits=2), "%")
+paste0("")
+```
+
+```{r}
+## how many (or what percentage of) predictions less than 10 % error 
+perc_lt10 <- 100/nrow(bagged_metadata_sum) * (nrow(bagged_metadata_sum %>% filter(bagged_detrans_relative_error < 10)))
+perc_lt10
+perc_lt20 <- 100/nrow(bagged_metadata_sum) * (nrow(bagged_metadata_sum %>% filter(bagged_detrans_relative_error < 20)))
+perc_lt20
+perc_lt50 <- 100/nrow(bagged_metadata_sum) * (nrow(bagged_metadata_sum %>% filter(bagged_detrans_relative_error < 50)))
+perc_lt50
+```
+
+
+```{r fig.width=6, fig.height=3}
+## PLOT GLOBAL CORRELATIONS ---- 
+bagged_metadata_sum$gs_mbp <- bagged_metadata_sum$genome_size/1000000
+bagged_metadata_sum$gs_gbp <- bagged_metadata_sum$gs_mbp/1000
+
+## global corr
+gc <- ggscatter(bagged_metadata_sum,
+                x = "global_cg_oe",
+                y = "log_lifespan",
+                add = "reg.line",
+                xlab = "Global CpG O/E",
+                ylab = "Known lifepsan (ln)",
+                shape = "genus_s",
+                ggtheme = theme_bw(),
+                fill = "bagged_detrans_predicted_lifespan",
+                legend = "bottom",
+                # size = 1,
+                legend.title = "Predicted lifespan\n(years)") +
+  stat_cor(aes(label = paste(..r.label.., ..rr.label..,
+                             ..p.label.., sep = "~`,`~")),
+           label.x.npc = 0.37,
+           label.y.npc = 1,
+           size=3)+
+  scale_fill_viridis_c(option = "C")+
+  scale_shape_manual(values=c(21, 23), guide = "none")
+
+# gc
+
+## genome size
+gl <- ggscatter(bagged_metadata_sum,
+                x = "gs_gbp",
+                y = "log_lifespan",
+                add = "reg.line",
+                xlab = "Genome size (Gbp)",
+                ylab = "Known lifespan (ln)",
+                shape = "genus_s",
+                ggtheme = theme_bw(),
+                fill = "bagged_detrans_predicted_lifespan",
+                legend = "bottom",
+                # size = 1,
+                legend.title = "Predicted lifespan\n(years)") +
+  stat_cor(aes(label = paste(..r.label.., ..rr.label..,
+                             ..p.label.., sep = "~`,`~")),
+           label.x.npc = 0.37,
+           label.y.npc = 1,
+           size=3)+
+  scale_fill_viridis_c(option = "C")+
+  scale_shape_manual(values=c(21, 23), guide = "none")
+
+# gl
+
+## genome size
+gs <- ggscatter(bagged_metadata_sum,
+                x = "gs_gbp",
+                y = "global_cg_oe",
+                add = "reg.line",
+                xlab = "Genome size (Gbp)",
+                ylab = "Global CpG O/E",
+                shape = "genus_s",
+                ggtheme = theme_bw(),
+                fill = "bagged_detrans_predicted_lifespan",
+                legend = "bottom",
+                # size = 1,
+                legend.title = "Predicted lifespan\n(years)") +
+  stat_cor(aes(label = paste(..r.label.., ..rr.label..,
+                             ..p.label.., sep = "~`,`~")),
+           label.x.npc = 0.3,
+           label.y.npc = 1,
+           size=3)+
+  scale_fill_viridis_c(option = "C")+
+  scale_shape_manual(values=c(21, 23), guide = "none")
+
+# gs
+```
+
+```{r}
+## glm for the above data (so that the interaction can be tested)
+
+## edit df for glm
+global_glm_data <- bagged_metadata_sum %>%
+  rename(`Global CpG O/E` = global_cg_oe, 
+         `Genome size (Gbp)` = gs_gbp, 
+         `Known lifespan (ln)` = log_lifespan)
+
+## global glm
+glbl_glm <-glm(data = global_glm_data, 
+             formula = `Known lifespan (ln)` ~ `Global CpG O/E` * `Genome size (Gbp)`)
+
+## print summary
+summary(glbl_glm)
+
+## save as table
+sjPlot::tab_model(glbl_glm, file = "FiguresTables/Table S[global_glm].doc")
+```
+
+```{r}
+# ## plot terms
+gm <- sjPlot::plot_model(glbl_glm, type = "pred",
+                   terms=c("Global CpG O/E", "Genome size (Gbp)"))+
+  theme_bw()+
+  ggtitle(NULL)+
+  labs(y="Known lifespan (ln)",
+       x="Global CpG O/E",
+       colour="Genome size\n(Gbp)")+
+  scale_fill_manual(values = c("#0D0887FF", "#9C179EFF", "#ED7953FF"))+
+  scale_colour_manual(values = c("#0D0887FF", "#9C179EFF", "#ED7953FF"))+
+  theme(legend.position = "bottom")+
+  annotate("text", x=-Inf, y=Inf, hjust=-0.1, vjust=1.5, 
+           label = "Known lifespan (ln) ~\nGlobal CpG O/E * Genome size (Gbp)", 
+           fontface = "italic",
+           size=3.25)
+
+# gm
+```
+
+```{r}
+## make global CpG O/E figure
+
+g1<-ggarrange(gl, gs,
+          # common.legend = TRUE,
+          legend="none",
+          nrow=1,
+          labels=c("A", "B"))
+
+#theme(plot.margin = margin(5.5, 5.5, 15.5, 5.5)), #t, r, b, l
+
+g2<-ggarrange(gc, 
+          gm+theme(plot.margin=margin(5.5, 5.5, 15.25, 5.5)), #t, r, b, l
+          nrow=1,
+          labels=c("C", "D"))
+
+ggarrange(g1, g2, 
+          nrow=2, 
+          heights=c(0.8, 1))
+
+ggsave(filename="FiguresTables/Figure [global].pdf",
+       width = 8.25,
+       height = 8.25,
+       units = "in")
+
+ggsave(filename="FiguresTables/Figure [global].tiff",
+       width = 8.25,
+       height = 8.25,
+       units = "in")
+```
+
+```{r}
+## global corr for sebastes
+gcs <- ggscatter(bagged_metadata_sum %>% filter(genus == "Sebastes"),
+                x = "global_cg_oe",
+                y = "log_lifespan",
+                add = "reg.line",
+                xlab = "Global CpG O/E",
+                ylab = "Known lifepsan (ln)",
+                shape = "genus_s",
+                ggtheme = theme_bw(),
+                fill = "bagged_detrans_predicted_lifespan",
+                legend = "bottom",
+                # size = 1,
+                legend.title = "Predicted lifespan\n(years)") +
+  stat_cor(aes(label = paste(..r.label.., ..rr.label..,
+                             ..p.label.., sep = "~`,`~")),
+           label.x.npc = 0.37,
+           label.y.npc = 1,
+           size=3)+
+  scale_fill_viridis_c(option = "C")+
+  scale_shape_manual(values=c(21, 23), guide = "none")
+
+gcs
+```
+
+
+```{r fig.height=4, fig.width=4}
+## look at correlations (ages) ----
+
+## create a vector of variables
+vv <- c("mean_lifespan", ## known age
+        "bagged_detrans_predicted_lifespan", ## predicted age
+        "mre_lifespan", ## known age % sd
+        "n_reported_values") ## num estimates of known age
+
+## create empty vector for plots
+pv <- NULL
+
+for (var in vv) {
+  temp_name <- paste0("scat_", var)
+  
+  pv <- c(pv, temp_name)
+  
+  assign(temp_name, ggscatter(bagged_metadata_sum,
+                              x = var, y="bagged_detrans_relative_error",
+                              # xlab = "",
+                              ylab = "Relative prediction error (%)",
+                              add = "reg.line", 
+                              shape = "genus_s", 
+                              alpha = 0.9, 
+                              size=1.75,
+                              fill="mean_lifespan",
+                              ggtheme = theme_bw(),
+                              legend = "bottom",
+                              legend.title = "Known lifespan (years)") +
+           scale_shape_manual(values=c(21, 23), guide = "none")+
+           scale_fill_viridis_c(option="C")+
+           stat_cor(aes(label = paste(..r.label.., ..rr.label.., 
+                                      ..p.label.., sep = "~`,`~")), 
+                    label.x.npc = 0.1, 
+                    label.y.npc = 1, 
+                    size=3.3))
+}
+
+# paste(pv, collapse=", ")
+
+ggarrange(scat_mean_lifespan+labs(x="Known lifespan"),
+          scat_bagged_detrans_predicted_lifespan+labs(x="Predicted lifespan"), 
+          scat_mre_lifespan+labs(x="Relative known lifespan error (%)"), 
+          scat_n_reported_values+labs(x="Number of reported lifespan values"), 
+          ncol=2, nrow=2, 
+          common.legend=TRUE,
+          labels = c("A", "B", "C", "D"),
+          legend="bottom")
+
+ggsave("FiguresTables/Figure S[age_corrs].png",
+       width = 7,
+       height = 7,
+       units = "in")
+```
+
+```{r}
+## edit df for glm
+metadata_sum_glm <- bagged_metadata_sum %>%
+  rename(`Relative prediction error (%)` = bagged_detrans_relative_error, 
+         `Number of reported lifespan values` = n_reported_values, 
+         `Known lifespan` = mean_lifespan)
+
+
+## age glm
+ls_glm <-glm(data = metadata_sum_glm, 
+             formula = `Relative prediction error (%)` ~ `Number of reported lifespan values` * `Known lifespan`)
+
+## print summary
+summary(ls_glm)
+
+## save as table
+sjPlot::tab_model(ls_glm, file = "FiguresTables/Table S[err_glm].doc")
+```
+
+```{r}
+## plot terms
+sjPlot::plot_model(ls_glm, type = "pred", 
+                   terms=c("Number of reported lifespan values", "Known lifespan"))+
+  theme_bw()+
+  ggtitle(NULL)+
+  labs(y="Relative prediction error (%)", 
+       colour="Known\nlifespan\n(years)")
+
+## save plot
+ggsave("FiguresTables/Figure S[err_glm].png",
+       width = 7,
+       height = 4,
+       units = "in")
+```
+
+```{r fig.height=4, fig.width=4}
+## look at correlations (blast hits) ----
+
+## create a vector of variables
+vv <- c("dist_from_zeb_lca", "b_complete", "num_hits", "num_hits_pp", 
+        "mean_hit_len", "mean_nz_hit_len", "mean_hit_len_pp_z", "mean_hit_len_pp_nz",
+        "mean_perc_ident", "mean_nz_perc_ident", "mean_hit_pi_pp_z", "mean_hit_pi_pp_nz")
+
+## create empty vector for plots
+pv <- NULL
+
+for (var in vv) {
+  temp_name <- paste0("scat_", var)
+  
+  pv <- c(pv, temp_name)
+  
+  assign(temp_name, ggscatter(bagged_metadata_sum,
+                              x = var, y="bagged_detrans_relative_error",
+                              ylab = "Relative prediction error (%)",
+                              add = "reg.line", 
+                              shape = "genus_s", 
+                              alpha = 0.9, 
+                              size=1.75,
+                              ggtheme = theme_bw(),
+                              fill = "mean_lifespan",
+                              legend = "bottom",
+                              legend.title = "Known lifespan (years)") +
+           scale_fill_viridis_c(option = "C")+
+           scale_shape_manual(values=c(21, 23), guide = "none")+
+           stat_cor(aes(label = paste(..r.label.., ..rr.label.., 
+                                      ..p.label.., sep = "~`,`~")), 
+                    label.x.npc = 0.1, 
+                    label.y.npc = 1, 
+                    size=3.3))
+}
+
+# paste(pv, collapse=", ")
+
+ggarrange(scat_num_hits+labs(x="Number of BLAST hits\n "),
+          scat_mean_hit_len+labs(x="Mean BLAST hit length (bp)\n(no hit = 0)"),
+          scat_mean_perc_ident+labs(x="Mean sequence identity (%)\n(no hit = 0)"),
+          ##
+          scat_num_hits_pp+labs(x="Number of BLAST hits\n(modelled promoters only)"),
+          scat_mean_hit_len_pp_z+labs(x="Mean BLAST hit length (bp)\n(modelled promoters only; no hit = 0)"),
+          scat_mean_hit_pi_pp_z+labs(x="Mean sequence identity (%)\n(modelled promoters only; no hit = 0)"),
+          ##
+          scat_b_complete+labs(x="BUSCO completeness score\n "),
+          scat_mean_nz_hit_len+labs(x="Mean BLAST hit length (bp)\n(no hit = NA)"),
+          scat_mean_nz_perc_ident+labs(x="Mean sequence identity (%)\n(no hit = NA)"),
+          ##
+          scat_dist_from_zeb_lca+labs(x="Distance from zebrafish LCA\n "),
+          scat_mean_hit_len_pp_nz+labs(x="Mean BLAST hit length (bp)\n(modelled promoters only; no hit = NA)"),
+          scat_mean_hit_pi_pp_nz+labs(x="Mean sequence identity (%)\n(modelled promoters only; no hit = NA)"),
+          ##
+          ncol=3, nrow=4, 
+          labels = LETTERS[1:12],
+          legend = "bottom",
+          common.legend=TRUE)
+
+ggsave("FiguresTables/Figure S[blast_corrs].png",
+       width = 11,
+       height = 14,
+       units = "in")
+
+```
+
+```{r}
+## sebastes range
+paste0("sebastes known lifespan range: ", 
+       bagged_metadata_sum %>%
+         filter(genus == "Sebastes") %>%
+         slice_min(mean_lifespan, n=1) %>%
+         pull(mean_lifespan),
+       " - ",
+       round(bagged_metadata_sum %>%
+         filter(genus == "Sebastes") %>%
+         slice_max(mean_lifespan, n=1) %>%
+         pull(mean_lifespan), digits=2)) 
+
+paste0("sebastes predicted lifespan range: ", 
+       round(bagged_metadata_sum %>% 
+               filter(genus == "Sebastes") %>%
+               slice_min(bagged_detrans_predicted_lifespan, n=1) %>%
+               pull(bagged_detrans_predicted_lifespan), digits=2),
+       " - ",
+       round(bagged_metadata_sum %>% 
+               filter(genus == "Sebastes") %>%
+               slice_max(bagged_detrans_predicted_lifespan, n=1) %>%
+               pull(bagged_detrans_predicted_lifespan), digits=2))
+```
+
+```{r}
+## format cpg df (pp only) long
+cpg_oe_pp_df <- as.data.frame(cpg_oe_data_pp) %>%
+  rownames_to_column(., var = "organism_name") %>%
+  pivot_longer(., -organism_name, names_to = "promoter_id", values_to = "cpg_oe") %>%
+  ## remove NA values
+  na.omit(.) %>%
+  ## add sebastes info
+  mutate(genus_s = ifelse(grepl("Sebastes", organism_name), 
+                          "Sebastes", 
+                          "Other"))
+
+## filter for promoters sebastes has
+cpg_oe_pp_df_seb <- cpg_oe_pp_df %>%
+  filter(., promoter_id %in% (cpg_oe_pp_df %>%
+                                filter(., genus_s == "Sebastes") %>%
+                                pull(promoter_id) %>%
+                                unique(.)))
+
+# filter for first n promoters
+n = 12
+cpg_oe_pp_df_sebn <- cpg_oe_pp_df_seb %>%
+  filter(., promoter_id %in% levels(factor(cpg_oe_pp_df_seb$promoter_id))[1:n])
+
+## create and count num sebastes
+species_sebastes <- cpg_oe_pp_df %>%
+  filter(., genus_s == "Sebastes") %>%
+  pull(organism_name) %>%
+  unique(.)
+
+## create vector for first 57 non sebastes species
+species_57 <- (cpg_oe_pp_df %>%
+  filter(., genus_s != "Sebastes") %>%
+  pull(organism_name) %>%
+  unique(.))[1:length(species_sebastes)]
+
+## create spp list
+species <- c(species_sebastes, species_57)
+
+## create a df with even numbers
+cpg_oe_pp_df_sebn_even <- cpg_oe_pp_df_sebn %>%
+  filter(organism_name %in% species)
+
+## plot it
+cgoe_n <- ggplot(data = cpg_oe_pp_df_sebn_even)+
+  aes(x=genus_s, y=cpg_oe)+
+  geom_boxplot()+
+  scale_y_log10()+
+  geom_jitter(pch=21,
+              size=1,
+              fill="grey",
+              width=0.3)+
+  theme_bw()+
+  theme(legend.position="none")+
+  facet_wrap(vars(promoter_id), nrow=n/4)+
+  labs(x="Genus", y="CpG O/E")
+
+cgoe_n
+
+## save it 
+ggsave("FiguresTables/Figure S[sebastes].png",
+       cgoe_n,
+       width = 8,
+       height = 10,
+       units = "in")
+  
+```
+
+```{r}
+genus_count <- bagged_metadata_sum %>%
+  add_count(genus, name="num_in_genus") %>%
+  select(genus, num_in_genus) %>%
+  unique(.)
+
+paste0("mean number of species per genus in the data set: ", round(mean(genus_count$num_in_genus), digits = 2))
+
+paste0("number of sebastes species in the data set: ", genus_count %>% filter(genus=="Sebastes") %>% pull(num_in_genus))
+```
+
+```{r fig.width=4.125, fig.height=3.91}
+## SUMMARISE PROMOTER CPG VALUES ---- 
+
+## cpg density ----
+
+## read in cpg density data (keep NA)
+cpg_dens_data_full <- read.csv("DataFiles/06.00_cpg_dens_data.csv") %>%
+  column_to_rownames(., var="X") %>%
+  ## format as matrix
+  as.matrix(.)
+
+## remove species not in the model
+no_meta_fish <- setdiff(rownames(cpg_dens_data_full), bagged_metadata_sum$organism_name)
+cpg_dens_data <- cpg_dens_data_full[!rownames(cpg_dens_data_full) %in% no_meta_fish, ]
+
+## get mean min max density for each promoter (takes ages)
+sum_cpg_dens_z <- t(cpg_dens_data) %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0) %>%
+  as.data.frame(.) %>% 
+  rownames_to_column(., var = "promoter_id") %>%
+  rowwise() %>%
+  mutate(min_dens = min(c_across(where(is.numeric))), 
+         max_dens = max(c_across(where(is.numeric))), 
+         mean_dens = mean(c_across(where(is.numeric)))) %>%
+  select(promoter_id, min_dens, mean_dens, max_dens) 
+
+## cpg oe ----
+
+## get mean min max oe for each promoter (non-zero df, takes ages)
+sum_cpg_oe <- t(cpg_oe_data) %>%
+  as.data.frame(.) %>% 
+  rownames_to_column(., var = "promoter_id") %>%
+  rowwise() %>%
+  mutate(min_oe = min((c_across(where(is.numeric))), na.rm=TRUE), 
+         max_oe = max((c_across(where(is.numeric))), na.rm=TRUE), 
+         mean_oe = mean((c_across(where(is.numeric))), na.rm=TRUE)) %>%
+  select(promoter_id, min_oe, mean_oe, max_oe)
+
+## get mean min max oe for each promoter (takes ages)
+sum_cpg_oe_z <- t(cpg_oe_data) %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0) %>%
+  as.data.frame(.) %>% 
+  rownames_to_column(., var = "promoter_id") %>%
+  rowwise() %>%
+  mutate(min_oe = min(c_across(where(is.numeric))), 
+         max_oe = max(c_across(where(is.numeric))), 
+         mean_oe = mean(c_across(where(is.numeric)))) %>%
+  select(promoter_id, min_oe, mean_oe, max_oe) 
+
+## zebra fish (both) ----
+
+## get zebrafish promoter cg oe values
+zeb_cpg_oe_z <- t(cpg_oe_data) %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0) %>%
+  as.data.frame(.) %>%
+  select(`Danio rerio`, `Oreochromis niloticus`) %>%
+  rownames_to_column(.) %>%
+  setNames(c("promoter_id", "zeb_oe", "tilapia_oe"))
+
+## get zebrafish promoter cg density values
+zeb_cpg_dens_z <- t(cpg_dens_data) %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0) %>%
+  as.data.frame(.) %>%
+  select(`Danio rerio`, `Oreochromis niloticus`) %>%
+  rownames_to_column(.) %>%
+  setNames(c("promoter_id", "zeb_density", "tilapia_density"))
+
+## combine
+sum_cpg_oe_z_comb <- left_join(sum_cpg_oe_z, sum_cpg_dens_z) %>%
+  left_join(., zeb_cpg_oe_z) %>%
+  left_join(., zeb_cpg_dens_z)
+
+## keep only modeled promoters and add correlation info
+sum_cpg_oe_z_comb_pp <- sum_cpg_oe_z_comb %>%
+  left_join(predictive_promoters_avg, .) %>%
+  mutate(promoter_id = fct_inorder(factor(promoter_id)))
+
+```
+
+```{r}
+## PROMOTERS ---- 
+
+## add significance
+sum_cpg_oe_z_comb_pp$sigyn <- ifelse(is.na(sum_cpg_oe_z_comb_pp$sig_corr), 
+                                             "No", 
+                                             "Yes")
+
+## plot corr vs coef
+pp_cc <- ggscatter(sum_cpg_oe_z_comb_pp,
+          x = "corr", y = "mean_coef",
+          xlab = "Pearson correlation",
+          ylab = "Mean weight",
+          shape = 21, ggtheme = theme_bw(),
+          fill = "npv",
+          alpha="sigyn",
+          legend = "bottom",
+          legend.title = "") +
+  scale_fill_viridis_d(option = "C", na.value="grey")+
+  scale_alpha_discrete(range=c(0.4, 1), guide="none")+
+  geom_vline(xintercept=0,
+             linetype="dashed",
+             size=0.25)+
+  geom_hline(yintercept=0,
+             linetype="dashed",
+             colour="grey50",
+             size=0.25)
+
+# pp_cc
+```
+
+```{r fig.width=4.125, fig.height=3.91}
+## plot cpg oe ~ coef
+oe_coef <- ggscatter(sum_cpg_oe_z_comb_pp,
+          x = "mean_oe", y = "mean_coef",
+          xlab = "Mean CpG O/E", 
+          ylab = "Mean weight",
+          shape = 21, ggtheme = theme_bw(),
+          fill = "npv", 
+          alpha="sigyn",
+          legend = "bottom", 
+          legend.title = "") +
+  scale_fill_viridis_d(option = "C")+
+  scale_alpha_discrete(range=c(0.4, 1), guide="none")+
+  geom_hline(yintercept=0, 
+             linetype="dashed", 
+             colour="grey50",
+             size=0.25)
+  
+# oe_coef
+```
+
+```{r}
+
+ggarrange(promoter_plot, 
+               ncol=1, 
+               labels=c("A", ""), 
+               heights=c(1, 0.9), 
+          ggarrange(pp_cc, oe_coef, 
+                         labels = c("B", "C"), 
+                         common.legend = TRUE, 
+                         legend = "bottom"))
+               
+
+ggsave(filename="FiguresTables/Figure [promoters].pdf",
+       width = 8.25,
+       height = 8.25,
+       units = "in")
+
+ggsave(filename="FiguresTables/Figure [promoters].tiff",
+       width = 8.25,
+       height = 8.25,
+       units = "in")
+
+
+```
+
+```{r}
+## promoter info
+
+## number total
+ttl<-nrow(predictive_promoters_avg)
+
+## positive coef
+cfpos<-predictive_promoters_avg %>%
+         filter(mean_coef > 0) %>%
+         pull(promoter_id)
+
+## negative coef
+cfneg<-predictive_promoters_avg %>%
+         filter(mean_coef < 0) %>%
+         pull(promoter_id)
+
+## positive corrs
+crpos<-predictive_promoters_avg %>%
+         filter(corr > 0) %>%
+         pull(promoter_id)
+
+## neg corrs
+crneg<-predictive_promoters_avg %>%
+         filter(corr < 0) %>%
+         pull(promoter_id)
+
+## positive coef and corr
+cfrpos <- intersect(cfpos, crpos)
+
+## positive coef and negative corr
+cfpos_crneg <- intersect(cfpos, crneg)
+
+## negative coef and corr
+cfrneg <- intersect(cfneg, crneg)
+
+## negative coef and positive corr
+cfneg_crpos <- intersect(cfneg, crpos)
+
+paste("Total number of modelled promoters (all models):", ttl)
+paste("Number negatively associated with lifespan (mean values):", length(cfneg))
+paste("Number positively associated with lifespan (mean values):", length(cfpos))
+
+paste("Of the", length(cfneg), 
+      "promoters negatively associated with lifespan (on average) in the model,", 
+      length(cfrneg), 
+      "also had negative Pearson correlations with lifespan, and",
+      length(cfneg_crpos), 
+      "had positive Pearson correlations with lifespan")
+
+paste("Of the", length(cfpos), 
+      "promoters positively associated with lifespan (on average) in the model,", 
+      length(cfrpos), 
+      "also had positive Pearson correlations with lifespan, and",
+      length(cfpos_crneg), 
+      "had negative Pearson correlations with lifespan")
+```
+```{r}
+## all promoters - xx % zero data
+
+## total num cells
+ttlcz<-length(cpg_oe_data_full_z)
+## total num 0
+zeros<-length(which(cpg_oe_data_full_z == 0))
+## total num value
+not_zeros<-length(which(cpg_oe_data_full_z != 0))
+## percent of total missing... 
+perc_zeros <- zeros/ttlcz*100
+
+paste0("The selected promoters also had fewer zero values, where ",
+       round(perc_zeros, digits=2), 
+       " % of all promoter CpG O/E values in the complete data set were 0...")
+
+## modelled promoters - xx % zero data 
+
+cpg_oe_data_pp_z <- cpg_oe_data_pp %>%
+  ## replace NAs with zeros
+  replace(is.na(.), 0)
+
+## total num cells
+ttlc_ppz<-length(cpg_oe_data_pp_z)
+## total num zeros
+zero_pp<-length(which(cpg_oe_data_pp_z == 0))
+## total num not zeros
+not_zero_pp<-length(which(cpg_oe_data_pp_z != 0))
+## percent of total missing... 
+perc_zero_pp <- zero_pp/ttlc_ppz*100
+
+paste0("..., which was reduced to ", 
+       round(perc_zero_pp, digits=2), 
+       " % for the modelled promoters")
+```
+
+```{r}
+## all promoters - xx % missing data
+
+paste("same values for missing data (not in text but to show that there are some true zeros): ")
+
+## total num cells
+ttlc<-length(cpg_oe_data)
+## total num NA
+na<-sum(is.na(cpg_oe_data))
+## total num value
+not_na<-sum(!is.na(cpg_oe_data))
+## percent of total missing... 
+perc_missing <- na/ttlc*100
+
+round(perc_missing, digits=2)
+
+## modelled promoters - xx % missing data 
+
+## total num cells
+ttlc_pp<-length(cpg_oe_data_pp)
+## total num NA
+na_pp<-sum(is.na(cpg_oe_data_pp))
+## total num value
+not_na_pp<-sum(!is.na(cpg_oe_data_pp))
+## percent of total missing... 
+perc_missing_pp <- na_pp/ttlc_pp*100
+
+round(perc_missing_pp, digits=2)
+```
+
+```{r}
+## add modelled or not info to sum_cpg_oe_z df
+
+paste0("t-tests corresponding to box plots below: ")
+
+sum_cpg_oe <- sum_cpg_oe %>% 
+  filter_all(all_vars(!is.infinite(.)))
+
+sum_cpg_oe_z$selected <- ifelse(sum_cpg_oe_z$promoter_id %in% predictive_promoters, 
+                                "Selected", 
+                                "Not selected")
+
+sum_cpg_oe$selected <- ifelse(sum_cpg_oe$promoter_id %in% predictive_promoters, 
+                                "Selected", 
+                                "Not selected")
+
+## t-test
+sum_cpg_oe_zs <- sum_cpg_oe_z %>%
+  filter(., selected == "Selected")
+
+sum_cpg_oe_zns <- sum_cpg_oe_z %>%
+  filter(., selected == "Not selected") 
+
+# var.test(sum_cpg_oe_zs$mean_oe, sum_cpg_oe_zns$mean_oe)
+t.test(sum_cpg_oe_zns$mean_oe, sum_cpg_oe_zs$mean_oe, var=FALSE)
+
+## t-test
+sum_cpg_oe_s <- sum_cpg_oe %>%
+  filter(., selected == "Selected")
+
+sum_cpg_oe_ns <- sum_cpg_oe %>%
+  filter(., selected == "Not selected") 
+
+# var.test(sum_cpg_oe_s$mean_oe, sum_cpg_oe_ns$mean_oe)
+t.test(sum_cpg_oe_ns$mean_oe, sum_cpg_oe_s$mean_oe, var=FALSE)
+
+
+```
+```{r}
+## box plots ----
+
+## box plot of modelled vs not modelled promoters mean CpG O/E
+zero_bp<-ggplot(data = sum_cpg_oe_z)+
+  aes(x=selected, y=mean_oe)+
+  geom_boxplot()+
+  geom_jitter(width=0.3, 
+              fill="grey",
+              pch=21)+
+  labs(x="Promoters (No BLAST hit = 0)", y="Mean CpG O/E")+
+  theme_bw()+
+  annotate("text", 
+           colour="grey30",
+           x=1, 
+           y=max(sum_cpg_oe_z$mean_oe*1.1), 
+           label="b")+
+  annotate("text", 
+           colour="grey30",
+           x=2, 
+           y=max(sum_cpg_oe_z$mean_oe*1.1), 
+           label="a")
+
+nas_bp<-ggplot(data = sum_cpg_oe)+
+  aes(x=selected, y=mean_oe)+
+  geom_boxplot()+
+  geom_jitter(width=0.3, 
+              fill="grey",
+              pch=21)+
+  labs(x="Promoters (No BLAST hit = NA)", y="Mean CpG O/E")+
+  theme_bw()+
+  annotate("text", 
+           x=1, 
+           colour="grey30",
+           y=max(sum_cpg_oe$mean_oe*1.1), 
+           label="a")+
+  annotate("text", 
+           x=2, 
+           colour="grey30",
+           y=max(sum_cpg_oe$mean_oe*1.1), 
+           label="b")
+
+ggarrange(zero_bp, nas_bp,
+          labels=c("A", "B"))
+
+ggsave("FiguresTables/Figure S[cpg_oe].png",
+       width = 8.25,
+       height = 4.25,
+       units = "in")
+```
+
+```{r}
+## PLOT MOVING AVERAGE FOR RELATIVE ERROR ----
+
+library(tidyquant)
+
+sma_plot <- bagged_metadata_sum %>%
+  ggplot(aes(x = mean_lifespan, y = bagged_detrans_relative_error)) +
+  geom_point() + 
+  ## add moving average line with 5-year simple moving average (SMA)
+  geom_ma(ma_fun = SMA, n = 5, color = "red", linetype="solid") +
+  geom_hline(yintercept = mean(mean(bagged_metadata_sum$bagged_detrans_relative_error, 
+                                    na.rm=TRUE), na.rm=TRUE), 
+             color = "darkgreen")+
+  labs(x = "Known lifespan (years)", 
+       y="Prediction error (%)", 
+       title="5-year simple moving average")+
+  theme_bw()
+sma_plot
+```
+

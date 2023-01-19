@@ -1,0 +1,423 @@
+---
+title: "elastic net - nested CV results"
+output:
+  html_notebook:
+    code_folding: hide
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+current_directory <- dirname(rstudioapi::getActiveDocumentContext()$path)
+knitr::opts_knit$set(root.dir=normalizePath(paste0(current_directory)))
+```
+
+```{r load_libraries, include=FALSE}
+## LOAD LIBRARIES ----
+
+library(caret)
+library(glmnet)
+library(glmnetUtils)
+library(viridis)
+library(ggpubr)
+library(ggrepel)
+library(plotmo)
+library(tidyverse)
+```
+
+
+```{r}
+## IMPORT AND FORMAT DATA ----
+
+## MODEL PARAMETERS ----
+
+## import model parameters
+nested_elastic_parameters <- read.csv("DataFiles/08.00_nested_elastic_parameters.csv")
+
+## format
+nested_elastic_parameters_long <- nested_elastic_parameters %>%
+  pivot_longer(., alpha_min:num_pred_proms)
+
+## CORRELATION DATA ---
+
+## import
+nested_elastic_correlations <- read.csv("DataFiles/08.00_nested_elastic_correlations.csv") %>%
+  mutate(estimate_sqrd_test = estimate_test^2, 
+         estimate_sqrd_train = estimate_train^2)
+
+## format
+nested_elastic_correlations_long <- nested_elastic_correlations %>%
+  select(-c(null.value_train, null.value_test,
+            alternative_train, alternative_test, 
+            method_train, method_test, 
+            data.name_train, data.name_test, 
+            parameter_train, parameter_test, 
+            conf_0_train, conf_1_train, 
+            conf_0_test, conf_1_test)) %>%
+  pivot_longer(., statistic_train:estimate_sqrd_train) %>%
+  mutate(data_set = ifelse(grepl("test", name), 
+                           "testing",
+                           ifelse(grepl("train", name),
+                                  "training",
+                                  "-"))) %>%
+  mutate(data_set = factor(data_set, levels=c("training", "testing", "-"))) %>%
+  mutate(test = gsub("_test", "", name) %>%
+           gsub("_train", "", .))
+```
+
+``` {r fig.width = 8.25, fig.height = 10}
+
+## PLOT MODEL PARAMETERS ----
+
+## facet labels
+nice_labels <- c(alpha_min = "Minimum alpha",
+                 lambda_min = "Minimum lambda",
+                 lambda_1se = "Lambda 1se", 
+                 mse_min = "Minimum mean squared error\n(MSE)", 
+                 num_pred_proms = "Number of features")
+
+## plot
+ocv_params_1 <- ggplot(nested_elastic_parameters_long, 
+       aes(x = partition_number, 
+           y = value, 
+           label = round(value, digits=3))) +
+  geom_line(size = 0.25)+
+  geom_point(pch=21, fill="grey")+
+  geom_text_repel(size = 2, angle = 30, point.padding = 5)+
+  facet_wrap("name", scales = "free", ncol = 1, labeller = as_labeller(nice_labels))+
+  scale_x_continuous(breaks = seq(0, 10, by = 1))+
+  labs(x="Model number", y="Value")+
+  theme_bw()+
+  theme(legend.position = "none")
+
+## test vs train ----
+
+## vars to plot
+vars_test_vs_train <- c("sig_diff_cor", "sig_diff_resid")
+
+### facet labels
+nice_labels <- c(sig_diff_cor = 
+                   "Correlation comparison p-value: testing ~ training",
+                 sig_diff_resid = 
+                   "T-test of residuals p-value: testing ~ training")
+
+
+## plot
+ocv_params_2 <- ggplot(nested_elastic_correlations_long %>% 
+                         filter(., name %in% vars_test_vs_train),
+       aes(x = partition_number, 
+           y = value, 
+           label = ifelse(value > 0.001, 
+                          round(value, digits=3), 
+                          " < 0.001"))) +
+  geom_line(size = 0.25)+
+  geom_point(pch=21, fill="grey")+
+  geom_text(size = 2, angle = 30,
+            hjust = -0.25, vjust = -0.5)+
+  facet_wrap("name", 
+             ncol = 2, 
+             labeller = as_labeller(nice_labels))+
+  scale_x_continuous(breaks = seq(0, 10, by = 1))+
+  lims(y=c(0, 1))+
+  labs(x="Model number", y="Value")+
+  theme_bw()+
+  theme(legend.position = "none")
+
+ggarrange(ocv_params_1, 
+          ocv_params_2+theme(plot.margin = unit(x=c(5.5,5.5,5.5,15),
+                                                units = "pt")), 
+          nrow = 2, ncol=1, 
+          heights = c(0.8, 0.2),
+          widths = c(1, 0.5),
+          labels = c("A", "B"))
+
+ggsave("FiguresTables/Figure S[ocv_params].png",
+       width = 8.25,
+       height = 10,
+       units = "in")
+
+```
+
+```{r}
+## print some values
+
+paste("Lambda 1se range:", 
+      round(min(nested_elastic_parameters$lambda_1se), digits=2), 
+      "-", 
+      round(max(nested_elastic_parameters$lambda_1se), digits=2))
+
+paste("Alpha range:", 
+      round(min(nested_elastic_parameters$alpha_min), digits=2), 
+      "-", 
+      round(max(nested_elastic_parameters$alpha_min), digits=2))
+```
+
+
+```{r}
+## import and format coefficient information from nested cv
+promoter_coefs <- read.csv("DataFiles/08.00_nested_promoter_coefficients.csv") %>%
+  ## remove intercept information
+  filter(promoter_id != "(Intercept)") %>%
+  ## make lexographic
+  rename_with(stringr::str_replace, 
+              pattern = "partition_", replacement = "partition_0") %>%
+  rename(partition_10 = partition_010) %>% 
+  ## order columns
+  select("promoter_id", sort(colnames(.)))
+
+## edit names
+names(promoter_coefs) <- gsub("partition_", "Model ", names(promoter_coefs))
+
+## make it long
+promoter_coefs_long <- promoter_coefs %>%
+  pivot_longer(., -promoter_id, 
+               names_to = "model_number", 
+               values_to = "coef") %>%
+  mutate(abs_coef = abs(coef)) %>%
+  filter(abs_coef > 0) %>%
+  group_by(model_number) %>%
+  add_tally(., name = "number_of_promoters") %>%
+  ungroup() %>%
+  group_by(promoter_id) %>%
+  add_tally(., name = "number_of_models")
+
+## export
+write.csv(promoter_coefs_long, "DataFiles/09.00_promoter_coefs_long.csv", row.names=FALSE)
+```
+
+```{r fig.width=8.35, fig.height=8.25}
+## FEATURE PLOTS ----
+
+## upset ggupset ---- 
+
+library(ggupset)
+
+df_list_col <- promoter_coefs_long %>%
+  group_by(promoter_id) %>%
+  summarise(model_numbers = list(model_number))
+
+gg_up<-ggplot(df_list_col)+
+  aes(x=model_numbers)+
+  geom_text(stat='count', 
+            size=2,
+            aes(label=after_stat(count)), 
+            vjust=-1) +
+  geom_bar(fill="#ED7953FF")+
+  labs(x=NULL, y="Shared feature count")+
+  theme_bw()+
+  scale_x_upset(n_intersections=41)+
+  theme_combmatrix(combmatrix.panel.point.color.fill = "#0D0887FF",
+                   combmatrix.panel.line.color = "#0D0887FF",
+                     combmatrix.panel.line.size = 0.5,
+                     combmatrix.label.make_space = FALSE)
+
+## extract model order from plot
+assertive.types::assert_is_any_of(gg_up, 'ggplot')
+
+model_order <- gg_up %>%
+  ggplot_build() %>%
+  magrittr::extract2('layout') %>%
+  magrittr::extract2('coord') %>%
+  magrittr::extract2('levels')
+
+## order the models in df
+promoter_coefs_long$model_number_f <- factor(promoter_coefs_long$model_number,
+                                             levels=c(rev(model_order)))
+
+## make a bar graph (check order)
+up_extra<-ggplot(promoter_coefs_long)+
+  aes(x=model_number_f)+
+  geom_bar(fill="#9C179EFF")+
+  geom_text(stat='identity', 
+            position='identity',
+            check_overlap = TRUE,
+            size=2,
+            aes(label=number_of_promoters, y=number_of_promoters),
+            hjust=1.15)+
+  ## flip x-y coordinates
+  coord_flip()+
+  ## reverse y (now x) axis
+  lims(y=c(max(promoter_coefs_long$number_of_promoters)+50, 0))+
+  labs(x=NULL, y="Feature count")+
+  theme_bw()+
+  theme(text = element_text(size=7))
+
+feats_1<-ggarrange(up_extra+
+                     theme(plot.margin = unit(x=c(403,10,5.5,5.5), ## T, R, B, L
+                                              units = "pt"), 
+                           axis.ticks.y = element_blank(), 
+                           axis.text.y = element_blank()), 
+                   gg_up+
+                     theme(plot.margin = unit(x=c(5.5,5.5,25,5.5), ## T, R, B, L
+                                                  units = "pt")), 
+                   widths=c(0.2, 0.8))
+```
+
+
+```{r fig.width = 8.25, fig.height = 10.75}
+feats_2 <- ggplot(promoter_coefs_long, 
+                  aes(promoter_id, model_number_f, fill=abs_coef)) + 
+  geom_tile()+
+  labs(x="Feature", y=NULL)+
+  scale_fill_viridis_c(option="C", 
+                       trans = "log", 
+                       name = "Absolute\ncoefficient\nvalue\n")+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        legend.position = "right", 
+        legend.title=element_text(size=8.5), 
+        legend.key.size = unit(0.45, 'cm'), 
+        legend.text = element_text(size=7))
+
+ggarrange(feats_1, 
+          feats_2+
+            theme(plot.margin = unit(x=c(20,5.5,5.5,5.5), ## T, R, B, L
+                                                  units = "pt")),
+          ncol=1, 
+          heights = c(0.75, 0.25), 
+          labels=c("A", "B"))
+
+ggsave("FiguresTables/Figure S[ocv_features].png",
+       width = 8.25,
+       height = 10.25,
+       units = "in")
+```
+
+```{r}
+paste("Number of promoters range:", 
+      round(min(nested_elastic_parameters$num_pred_proms), digits=2), 
+      "-", 
+      round(max(nested_elastic_parameters$num_pred_proms), digits=2))
+```
+
+
+```{r fig.width = 4, fig.height = 8}
+## import summary metadata
+nested_elastic_metadata_summary_unmod <- read.csv("DataFiles/08.00_nested_elastic_metadata_summary.csv")
+
+## format it
+nested_elastic_metadata_summary <- nested_elastic_metadata_summary_unmod %>%
+  mutate(log_absolute_error = abs(log_lifespan - log_predicted_lifespan)) %>%
+  mutate(log_relative_error = (log_absolute_error/log_lifespan)*100) %>%
+  mutate(detrans_absolute_error = abs(mean_lifespan - detrans_predicted_lifespan)) %>%
+  mutate(detrans_relative_error = (detrans_absolute_error/mean_lifespan)*100) %>%
+  mutate(model_number = paste0("Model 0", partition_number)) %>%
+  mutate(model_number = gsub("010", "10", model_number)) %>%
+  mutate(data_set_labs = ifelse(data_set == "training",
+                                "Training data",
+                                "Testing data")) %>%
+  mutate(data_set_labs = factor(data_set_labs,
+                                levels=c("Training data", "Testing data")))
+
+## export it
+write.csv(nested_elastic_metadata_summary, 
+          "DataFiles/09.00_nested_elastic_metadata_summary.csv", 
+          row.names=FALSE)
+
+scorr <- ggscatter(data = nested_elastic_metadata_summary,
+          x = "log_lifespan", 
+          y = "log_predicted_lifespan", 
+          add = "reg.line", 
+          xlab = "Known lifespan (ln)", 
+          ylab = "Predicted lifespan (ln)",
+          shape = 21, 
+          size = 1, 
+          fill="grey",
+          facet.by = c("model_number", "data_set_labs"),
+          ggtheme = theme_bw(),
+          legend = "bottom")+ 
+ stat_cor(aes(label = paste(..r.label..,
+                            ..rr.label..,
+                            ..p.label..,
+                            sep = "~`,`~")),
+          size=2.5,
+          label.y=3.5,
+          label.sep='\n')
+
+scorr
+
+ggsave("FiguresTables/Figure S[ocv_corrs].png", 
+       scorr, 
+       width = 8.25, 
+       height = 10, 
+       units = "in")
+```
+
+```{r fig.width = 4, fig.height = 8}
+## colour by sig diff resid for review
+
+## create df for facet label colours
+facet_label_colours <- nested_elastic_correlations_long %>% 
+                         filter(., name=="sig_diff_resid") %>%
+  mutate(facet_clr = ifelse(value >= 0.05, "No", 
+                            "Yes")) %>%
+  ## add model number
+  mutate(model_number = paste0("Model 0", partition_number)) %>%
+  mutate(model_number = gsub("010", "10", model_number)) %>%
+  ## select relevant columns
+  select(model_number, facet_clr)
+
+scorr_c <- ggscatter(data = nested_elastic_metadata_summary %>%
+                       left_join(., facet_label_colours),
+          x = "log_lifespan", 
+          y = "log_predicted_lifespan", 
+          add = "reg.line", 
+          xlab = "Known lifespan (ln)", 
+          ylab = "Predicted lifespan (ln)",
+          shape = 21, 
+          stroke=0.1,
+          size = 1, 
+          facet.by = c("model_number", "data_set_labs"),
+          fill="facet_clr",
+          ggtheme = theme_bw(),
+          legend = "bottom")+ 
+ stat_cor(aes(label = paste(#..r.label..,
+                            ..rr.label..,
+                            #..p.label..,
+                            sep = "~`,`~")),
+          size=2.5,
+          label.y=3.5,
+          label.sep='\n')+
+  scale_fill_manual(values=c("#1AE4B6FF", "#7A0403FF"), ## green, red
+                    name="Significantly different residuals")
+
+scorr_c
+
+## export for review
+saveRDS(scorr_c, "DataFiles/09.00_scorr_c.rds")
+```
+
+
+```{r}
+## print ranges for correlation coefficients (R):
+
+paste0("#### R ####")
+paste0("Minimum R: ", round(min(c(nested_elastic_correlations$estimate_train, 
+                          nested_elastic_correlations$estimate_test)), digits=2))
+
+paste0("Training data range: R = ", 
+       round(min(nested_elastic_correlations$estimate_train), digits=2),
+       " - ", 
+       round(max(nested_elastic_correlations$estimate_train), digits=2))
+
+paste0("Testing data range: R = ", 
+       round(min(nested_elastic_correlations$estimate_test), digits=2),
+       " - ", 
+       round(max(nested_elastic_correlations$estimate_test), digits=2))
+
+## print ranges for coefficient of determination (R^2):
+
+paste0("#### R^2 ####")
+paste0("Minimum R^2: ", round(min(c(nested_elastic_correlations$estimate_train^2, 
+                          nested_elastic_correlations$estimate_test^2)), digits=2))
+
+paste0("Training data range: R = ", 
+       round(min(nested_elastic_correlations$estimate_train)^2, digits=2),
+       " - ", 
+       round(max(nested_elastic_correlations$estimate_train)^2, digits=2))
+
+paste0("Testing data range: R = ", 
+       round(min(nested_elastic_correlations$estimate_test)^2, digits=2),
+       " - ", 
+       round(max(nested_elastic_correlations$estimate_test)^2, digits=2))
+```
