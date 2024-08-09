@@ -30,13 +30,10 @@ Please note, any bash or slurm scripts (`.sh` or `.slurm` extension) were writte
 
 ## :chart_with_upwards_trend: Data
 
-The raw genomic data which can be downloaded directly from https://www.ncbi.nlm.nih.gov/genome/ using the provided accession number. Additional files are in the folder `dataFiles`.
+The raw genomic data which can be downloaded directly from https://www.ncbi.nlm.nih.gov/genome/ using the provided accession numbers. Additional files are in the folder `dataFiles`.
 
 ## :woman_technologist: Author
 Alyssa Budd (alyssa.budd@csiro.au)
-
-## :bouquet: Acknowledgements
-The scripts have been adapted from a previous model used to predict fish lifespan https://github.com/dr-budd/fish_life. All scripts in `lifepi` were by written by Suk Yee Yong (sukyee.yong@csiro.au).
 
 ## :copyright: License
 [CSIRO Open Source Software Licence Agreement (variation of the BSD / MIT License)](LICENSE.txt)
