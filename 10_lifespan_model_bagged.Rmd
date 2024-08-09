@@ -26,16 +26,16 @@ library(tidyverse)
 ## CALCAULTE PROMOTER PEARSON CORRELATIONS ----
 
 ## import metadata
-nested_elastic_metadata_summary <- read.csv("DataFiles/09.00_nested_elastic_metadata_summary.csv")
+nested_elastic_metadata_summary <- read.csv("dataFiles/09.00_nested_elastic_metadata_summary.csv")
 
 ## "five copy" metadata
-nested_elastic_metadata_summary_fc <- read.csv("DataFiles/08.00_nested_elastic_metadata_summary_fc.csv")
+nested_elastic_metadata_summary_fc <- read.csv("dataFiles/08.00_nested_elastic_metadata_summary_fc.csv")
 
 ## import promoters
-promoter_coefs_long <- read.csv("DataFiles/09.00_promoter_coefs_long.csv")
+promoter_coefs_long <- read.csv("dataFiles/09.00_promoter_coefs_long.csv")
 
 ## import CpG density data
-cpg_oe_data_full_z <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+cpg_oe_data_full_z <- read.csv("dataFiles/06.00_cpg_oe_data.csv") %>%
   ##  move the species (col "X") names to row names
   column_to_rownames(., var="X") %>%
   ## replace NAs with zeros
@@ -111,7 +111,7 @@ predictive_promoters_avg <- promoter_coefs_long %>%
 
 
 ## export 
-write.csv(predictive_promoters_avg, "DataFiles/10.00_predictive_promoters_avg.csv", row.names=FALSE)
+write.csv(predictive_promoters_avg, "dataFiles/10.00_predictive_promoters_avg.csv", row.names=FALSE)
 
 ```
 
@@ -121,7 +121,7 @@ write.csv(predictive_promoters_avg, "DataFiles/10.00_predictive_promoters_avg.cs
 ## cpg o/e ----
 
 ## read in cpg oe data (keep NA)
-cpg_oe_data_full <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+cpg_oe_data_full <- read.csv("dataFiles/06.00_cpg_oe_data.csv") %>%
   column_to_rownames(., var="X") %>%
   ## format as matrix
   as.matrix(.)
@@ -136,7 +136,7 @@ cpg_oe_data_pp <- cpg_oe_data[ , colnames(cpg_oe_data) %in% predictive_promoters
 ## hit length ----
 
 ## read in hit length data (all fish)
-hit_len_data_full <- read.csv("DataFiles/06.00_hit_len_data_full.csv") %>%
+hit_len_data_full <- read.csv("dataFiles/06.00_hit_len_data_full.csv") %>%
   ## move column X to rows
   column_to_rownames(., var="X") %>%
   ## format as matrix
@@ -152,7 +152,7 @@ hit_len_data_pp <- hit_len_data[ , colnames(hit_len_data) %in% predictive_promot
 ## percent identity ----
 
 ## read in hit percent identity data (all fish)
-hit_pi_data_full <- read.csv("DataFiles/06.00_hit_pi_data_full.csv") %>%
+hit_pi_data_full <- read.csv("dataFiles/06.00_hit_pi_data_full.csv") %>%
   ## move column X to rows
   column_to_rownames(., var="X") %>%
   ## format as matrix
@@ -313,7 +313,7 @@ fc_table <- bagged_metadata_sum_fc %>%
   relocate(Species, `Mean predicted lifespan (±SD)`)
 
 ## save it
-write.csv(fc_table, "FiguresTables/Table S[fc_table].csv", row.names=FALSE)
+write.csv(fc_table, "figuresTables/Table S[fc_table].csv", row.names=FALSE)
 ```
 
 ```{r}
@@ -341,7 +341,7 @@ ls_preds <- bagged_metadata_sum %>%
   arrange(Species)
 
 ## export it
-write.csv(ls_preds, "FiguresTables/Table S[ls_preds].csv", row.names=FALSE)
+write.csv(ls_preds, "figuresTables/Table S[ls_preds].csv", row.names=FALSE)
 ```
 
 ```{r fig.width=3, fig.height=3}
@@ -457,8 +457,8 @@ abs_err_label <- with(bagged_metadata_sum,
 abs_err_label
 
 ## export lc and abs_err label for review
-saveRDS(lc, "DataFiles/10.00_lc.rds")
-saveRDS(abs_err_label, "DataFiles/10.00_abs_err_label.rds")
+saveRDS(lc, "dataFiles/10.00_lc.rds")
+saveRDS(abs_err_label, "dataFiles/10.00_abs_err_label.rds")
 ```
 
 ```{r}
@@ -513,12 +513,12 @@ ggarrange(model_plots,
           heights=c(1, 0.6),
           labels=c("", "C"))
 
-ggsave("FiguresTables/Figure [ls_model].pdf",
+ggsave("figuresTables/Figure [ls_model].pdf",
        width = 8.25,
        height = 7.25,
        units = "in")
 
-ggsave("FiguresTables/Figure [ls_model].tiff",
+ggsave("figuresTables/Figure [ls_model].tiff",
        width = 8.25,
        height = 7.25,
        units = "in")
@@ -795,7 +795,7 @@ glbl_glm <-glm(data = global_glm_data,
 summary(glbl_glm)
 
 ## save as table
-sjPlot::tab_model(glbl_glm, file = "FiguresTables/Table S[global_glm].doc")
+sjPlot::tab_model(glbl_glm, file = "figuresTables/Table S[global_glm].doc")
 ```
 
 ```{r}
@@ -838,12 +838,12 @@ ggarrange(g1, g2,
           nrow=2, 
           heights=c(0.8, 1))
 
-ggsave(filename="FiguresTables/Figure [global].pdf",
+ggsave(filename="figuresTables/Figure [global].pdf",
        width = 8.25,
        height = 8.25,
        units = "in")
 
-ggsave(filename="FiguresTables/Figure [global].tiff",
+ggsave(filename="figuresTables/Figure [global].tiff",
        width = 8.25,
        height = 8.25,
        units = "in")
@@ -924,7 +924,7 @@ ggarrange(scat_mean_lifespan+labs(x="Known lifespan"),
           labels = c("A", "B", "C", "D"),
           legend="bottom")
 
-ggsave("FiguresTables/Figure S[age_corrs].png",
+ggsave("figuresTables/Figure S[age_corrs].png",
        width = 7,
        height = 7,
        units = "in")
@@ -946,7 +946,7 @@ ls_glm <-glm(data = metadata_sum_glm,
 summary(ls_glm)
 
 ## save as table
-sjPlot::tab_model(ls_glm, file = "FiguresTables/Table S[err_glm].doc")
+sjPlot::tab_model(ls_glm, file = "figuresTables/Table S[err_glm].doc")
 ```
 
 ```{r}
@@ -959,7 +959,7 @@ sjPlot::plot_model(ls_glm, type = "pred",
        colour="Known\nlifespan\n(years)")
 
 ## save plot
-ggsave("FiguresTables/Figure S[err_glm].png",
+ggsave("figuresTables/Figure S[err_glm].png",
        width = 7,
        height = 4,
        units = "in")
@@ -1024,7 +1024,7 @@ ggarrange(scat_num_hits+labs(x="Number of BLAST hits\n "),
           legend = "bottom",
           common.legend=TRUE)
 
-ggsave("FiguresTables/Figure S[blast_corrs].png",
+ggsave("figuresTables/Figure S[blast_corrs].png",
        width = 11,
        height = 14,
        units = "in")
@@ -1116,7 +1116,7 @@ cgoe_n <- ggplot(data = cpg_oe_pp_df_sebn_even)+
 cgoe_n
 
 ## save it 
-ggsave("FiguresTables/Figure S[sebastes].png",
+ggsave("figuresTables/Figure S[sebastes].png",
        cgoe_n,
        width = 8,
        height = 10,
@@ -1141,7 +1141,7 @@ paste0("number of sebastes species in the data set: ", genus_count %>% filter(ge
 ## cpg density ----
 
 ## read in cpg density data (keep NA)
-cpg_dens_data_full <- read.csv("DataFiles/06.00_cpg_dens_data.csv") %>%
+cpg_dens_data_full <- read.csv("dataFiles/06.00_cpg_dens_data.csv") %>%
   column_to_rownames(., var="X") %>%
   ## format as matrix
   as.matrix(.)
@@ -1282,12 +1282,12 @@ ggarrange(promoter_plot,
                          legend = "bottom"))
                
 
-ggsave(filename="FiguresTables/Figure [promoters].pdf",
+ggsave(filename="figuresTables/Figure [promoters].pdf",
        width = 8.25,
        height = 8.25,
        units = "in")
 
-ggsave(filename="FiguresTables/Figure [promoters].tiff",
+ggsave(filename="figuresTables/Figure [promoters].tiff",
        width = 8.25,
        height = 8.25,
        units = "in")
@@ -1500,7 +1500,7 @@ nas_bp<-ggplot(data = sum_cpg_oe)+
 ggarrange(zero_bp, nas_bp,
           labels=c("A", "B"))
 
-ggsave("FiguresTables/Figure S[cpg_oe].png",
+ggsave("figuresTables/Figure S[cpg_oe].png",
        width = 8.25,
        height = 4.25,
        units = "in")

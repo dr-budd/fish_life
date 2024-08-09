@@ -26,12 +26,12 @@ get_model_params <- function(alpha_crossval_training) {
 ## IMPORT DATA ----
 
 ## import summary metadata 
-metadata_sum <- read.csv("DataFiles/06.00_metadata_sum.csv") %>%
+metadata_sum <- read.csv("dataFiles/06.00_metadata_sum.csv") %>%
   ## filter for lifespan species
   filter(!is.na(mean_lifespan))
 
 ## import CpG oe data
-cpg_oe_data_unmod <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+cpg_oe_data_unmod <- read.csv("dataFiles/06.00_cpg_oe_data.csv") %>%
   column_to_rownames(., var="X") %>%
   ## replace NAs with zeros
   replace(is.na(.), 0) %>%
@@ -44,7 +44,7 @@ cpg_oe_data <- cpg_oe_data_unmod[metadata_sum$organism_name, ]
 ## IMPORT FC DATA ----
 
 ## import CpG O/E data (fc)
-fc_oe <- read.csv("DataFiles/06.00_cpg_oe_data_fc.csv") %>%
+fc_oe <- read.csv("dataFiles/06.00_cpg_oe_data_fc.csv") %>%
   column_to_rownames(., var="X") %>%
   ## replace NAs with zeros
   replace(is.na(.), 0) %>%
@@ -52,7 +52,7 @@ fc_oe <- read.csv("DataFiles/06.00_cpg_oe_data_fc.csv") %>%
   as.matrix(.)
 
 ## metadata summary for "five copies" genomes (fc)
-meta_sum_fc <- read.csv("DataFiles/06.00_metadata_sum_fc.csv")
+meta_sum_fc <- read.csv("dataFiles/06.00_metadata_sum_fc.csv")
 
 ## NESTED ELASTIC NET ----
 
@@ -323,7 +323,7 @@ for (sample_index in sample_index_list) {
   
   # ## MAKE CV PLOTS (not used) ----
   # 
-  # plot_name <- paste0("FiguresTables/IcvPlots/icv_plots_m", partition_number, ".pdf")
+  # plot_name <- paste0("figuresTables/IcvPlots/icv_plots_m", partition_number, ".pdf")
   # pdf(plot_name, width = 11.75, height = 7.25)
   # 
   # ## create a 2 x 2 plotting matrix
@@ -366,13 +366,13 @@ for (sample_index in sample_index_list) {
 }
 
 ## export correlations, coefficients and lifespans
-write.csv(nested_elastic_parameters, "DataFiles/08.00_nested_elastic_parameters.csv", row.names = FALSE)
-write.csv(nested_elastic_correlations, "DataFiles/08.00_nested_elastic_correlations.csv", row.names = FALSE)
-write.csv(nested_promoter_coefficients, "DataFiles/08.00_nested_promoter_coefficients.csv", row.names = FALSE)
-write.csv(nested_elastic_metadata_summary, "DataFiles/08.00_nested_elastic_metadata_summary.csv", row.names = FALSE)
+write.csv(nested_elastic_parameters, "dataFiles/08.00_nested_elastic_parameters.csv", row.names = FALSE)
+write.csv(nested_elastic_correlations, "dataFiles/08.00_nested_elastic_correlations.csv", row.names = FALSE)
+write.csv(nested_promoter_coefficients, "dataFiles/08.00_nested_promoter_coefficients.csv", row.names = FALSE)
+write.csv(nested_elastic_metadata_summary, "dataFiles/08.00_nested_elastic_metadata_summary.csv", row.names = FALSE)
 
 ## fc
-write.csv(meta_sum_fc, "DataFiles/08.00_nested_elastic_metadata_summary_fc.csv", row.names = FALSE)
+write.csv(meta_sum_fc, "dataFiles/08.00_nested_elastic_metadata_summary_fc.csv", row.names = FALSE)
 
 ## print session info
 sessionInfo()

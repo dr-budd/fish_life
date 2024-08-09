@@ -16,17 +16,17 @@ library(ggtreeExtra) ## nice plots
 library(tidyverse) ## helpful for data handling and visualization
 
 ## import summary metadata (don't use 09 because the order is not the same)
-metadata_sum <- read.csv("DataFiles/06.00_metadata_sum.csv")
+metadata_sum <- read.csv("dataFiles/06.00_metadata_sum.csv")
 
 ## import and format CpG density data
-cpg_oe_data <- read.csv("DataFiles/06.00_cpg_oe_data.csv") %>%
+cpg_oe_data <- read.csv("dataFiles/06.00_cpg_oe_data.csv") %>%
   column_to_rownames(., var="X")
 
 ## quick sanity check
 all(rownames(cpg_oe_data) == unique(metadata_sum$organism_name))
 
 ## import predictive promoters
-predictive_promoters <- read.csv("DataFiles/10.00_predictive_promoters_avg.csv")
+predictive_promoters <- read.csv("dataFiles/10.00_predictive_promoters_avg.csv")
 
 ## FORMAT DATA AND CREATE TREE ----
 
@@ -44,7 +44,7 @@ cpg_oe_df <- cpg_oe_less %>%
                values_to = "cpg_oe")
 
 ## get timetree data
-chordate_tree <- read.tree("DataFiles/chordata_species.nwk")
+chordate_tree <- read.tree("dataFiles/chordata_species.nwk")
 
 ## edit tip labels
 chordate_tree$tip.label <- gsub("_", " ", chordate_tree$tip.label)
@@ -236,14 +236,14 @@ c4 <- c3+
 ## save it (takes a while)
 print("save time: ")
 Sys.time()
-ggsave("FiguresTables/Figure [tree].pdf", c4, width = 21, height = 29.7/2, units = "cm", limitsize=FALSE)
+ggsave("figuresTables/Figure [tree].pdf", c4, width = 21, height = 29.7/2, units = "cm", limitsize=FALSE)
 Sys.time()
 
 ## crop it
 print("crop time: ")
 Sys.time()
 system2(command = "pdfcrop", args = c("Figure [tree].pdf","Figure [tree].pdf","--margins","10"))
-knitr::plot_crop("FiguresTables/Figure [tree].pdf")
+knitr::plot_crop("figuresTables/Figure [tree].pdf")
 Sys.time()
 
 ## to fix colours:

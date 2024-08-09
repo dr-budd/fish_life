@@ -1,7 +1,7 @@
 ## SET UP ----
 
 ## set working directly to query results directory
-setwd(paste0(dirname(rstudioapi::getActiveDocumentContext()$path), "/DataFiles/QueryResultsFc"))
+setwd(paste0(dirname(rstudioapi::getActiveDocumentContext()$path), "/dataFiles/queryResultsFc"))
 
 ## open file to write output
 sink("../../LogFiles/06_calculate_cpg_content_fc_log.txt")

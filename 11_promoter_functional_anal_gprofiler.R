@@ -11,12 +11,12 @@ library(viridis)
 library(ggpubr)
 
 ## import data
-promoters <- read.table("DataFiles/epd_danio_rerio_names.txt") %>%
+promoters <- read.table("dataFiles/epd_danio_rerio_names.txt") %>%
   rename(promoter_id = V1, name = V2) %>%
   mutate(name = gsub("_1", "", name))
 
 ## import coefficient for predictive promoters
-predictive_promoters_avg <- read.csv("DataFiles/10.00_predictive_promoters_avg.csv")
+predictive_promoters_avg <- read.csv("dataFiles/10.00_predictive_promoters_avg.csv")
 
 ## edit df
 promoter_coefficients <- predictive_promoters_avg %>%
@@ -178,11 +178,11 @@ ggarrange(positive_plot+
           labels=c("A", "B"))
 
 ## save them
-ggsave("FiguresTables/Figure [go_terms_comb].tiff", 
+ggsave("figuresTables/Figure [go_terms_comb].tiff", 
        width = 21, height = 29.7/2, units="cm")
 
 ## save them
-ggsave("FiguresTables/Figure [go_terms_comb].pdf", 
+ggsave("figuresTables/Figure [go_terms_comb].pdf", 
        width = 21, height = 29.7/2, units="cm")
 
 ## create supp table
@@ -193,6 +193,6 @@ supp <- full_join(gost_mod_pos, gost_mod_neg) %>%
   relocate(Weighting)
 
 ## export it
-write.csv(supp, "FiguresTables/Table S[enrich].csv", row.names=FALSE)
+write.csv(supp, "figuresTables/Table S[enrich].csv", row.names=FALSE)
 
 ## END SCRIPT

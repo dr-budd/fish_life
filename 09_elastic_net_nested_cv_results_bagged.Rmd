@@ -32,7 +32,7 @@ library(tidyverse)
 ## MODEL PARAMETERS ----
 
 ## import model parameters
-nested_elastic_parameters <- read.csv("DataFiles/08.00_nested_elastic_parameters.csv")
+nested_elastic_parameters <- read.csv("dataFiles/08.00_nested_elastic_parameters.csv")
 
 ## format
 nested_elastic_parameters_long <- nested_elastic_parameters %>%
@@ -41,7 +41,7 @@ nested_elastic_parameters_long <- nested_elastic_parameters %>%
 ## CORRELATION DATA ---
 
 ## import
-nested_elastic_correlations <- read.csv("DataFiles/08.00_nested_elastic_correlations.csv") %>%
+nested_elastic_correlations <- read.csv("dataFiles/08.00_nested_elastic_correlations.csv") %>%
   mutate(estimate_sqrd_test = estimate_test^2, 
          estimate_sqrd_train = estimate_train^2)
 
@@ -131,7 +131,7 @@ ggarrange(ocv_params_1,
           widths = c(1, 0.5),
           labels = c("A", "B"))
 
-ggsave("FiguresTables/Figure S[ocv_params].png",
+ggsave("figuresTables/Figure S[ocv_params].png",
        width = 8.25,
        height = 10,
        units = "in")
@@ -155,7 +155,7 @@ paste("Alpha range:",
 
 ```{r}
 ## import and format coefficient information from nested cv
-promoter_coefs <- read.csv("DataFiles/08.00_nested_promoter_coefficients.csv") %>%
+promoter_coefs <- read.csv("dataFiles/08.00_nested_promoter_coefficients.csv") %>%
   ## remove intercept information
   filter(promoter_id != "(Intercept)") %>%
   ## make lexographic
@@ -182,7 +182,7 @@ promoter_coefs_long <- promoter_coefs %>%
   add_tally(., name = "number_of_models")
 
 ## export
-write.csv(promoter_coefs_long, "DataFiles/09.00_promoter_coefs_long.csv", row.names=FALSE)
+write.csv(promoter_coefs_long, "dataFiles/09.00_promoter_coefs_long.csv", row.names=FALSE)
 ```
 
 ```{r fig.width=8.35, fig.height=8.25}
@@ -277,7 +277,7 @@ ggarrange(feats_1,
           heights = c(0.75, 0.25), 
           labels=c("A", "B"))
 
-ggsave("FiguresTables/Figure S[ocv_features].png",
+ggsave("figuresTables/Figure S[ocv_features].png",
        width = 8.25,
        height = 10.25,
        units = "in")
@@ -293,7 +293,7 @@ paste("Number of promoters range:",
 
 ```{r fig.width = 4, fig.height = 8}
 ## import summary metadata
-nested_elastic_metadata_summary_unmod <- read.csv("DataFiles/08.00_nested_elastic_metadata_summary.csv")
+nested_elastic_metadata_summary_unmod <- read.csv("dataFiles/08.00_nested_elastic_metadata_summary.csv")
 
 ## format it
 nested_elastic_metadata_summary <- nested_elastic_metadata_summary_unmod %>%
@@ -311,7 +311,7 @@ nested_elastic_metadata_summary <- nested_elastic_metadata_summary_unmod %>%
 
 ## export it
 write.csv(nested_elastic_metadata_summary, 
-          "DataFiles/09.00_nested_elastic_metadata_summary.csv", 
+          "dataFiles/09.00_nested_elastic_metadata_summary.csv", 
           row.names=FALSE)
 
 scorr <- ggscatter(data = nested_elastic_metadata_summary,
@@ -336,7 +336,7 @@ scorr <- ggscatter(data = nested_elastic_metadata_summary,
 
 scorr
 
-ggsave("FiguresTables/Figure S[ocv_corrs].png", 
+ggsave("figuresTables/Figure S[ocv_corrs].png", 
        scorr, 
        width = 8.25, 
        height = 10, 
@@ -384,7 +384,7 @@ scorr_c <- ggscatter(data = nested_elastic_metadata_summary %>%
 scorr_c
 
 ## export for review
-saveRDS(scorr_c, "DataFiles/09.00_scorr_c.rds")
+saveRDS(scorr_c, "dataFiles/09.00_scorr_c.rds")
 ```
 
 

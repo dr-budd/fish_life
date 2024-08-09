@@ -24,7 +24,7 @@ library(tidyverse) ## helpful for data handling and visualization
 ## IMPORT DATA ----
 
 ## import CpG oe data
-cpg_oe_data_unmod <- read.csv("DataFiles/06.00_cpg_oe_data.csv", row.names = 1)
+cpg_oe_data_unmod <- read.csv("dataFiles/06.00_cpg_oe_data.csv", row.names = 1)
 
 ## make matrix and set nas to 0
 cpg_oe_data <- cpg_oe_data_unmod %>%
@@ -34,10 +34,10 @@ cpg_oe_data <- cpg_oe_data_unmod %>%
   as.matrix(.)
 
 ## import lifespan data
-lifespan_data <- read.csv("FiguresTables/Table S[lifespan].csv")
+lifespan_data <- read.csv("figuresTables/Table S[lifespan].csv")
 
 ## import summary metadata 
-sum_metadata <- read.csv("DataFiles/06.00_metadata_sum.csv") 
+sum_metadata <- read.csv("dataFiles/06.00_metadata_sum.csv") 
 ```
 
 ```{r}
@@ -72,7 +72,7 @@ ggplot(lifespan_data_plot %>%
   scale_fill_viridis_d(option="C")+
   theme(legend.position = "bottom")
 
-ggsave("FiguresTables/Figure S[dataset].png", 
+ggsave("figuresTables/Figure S[dataset].png", 
        width = 8.25, height = 11.75/2, units = "in", 
        device = "png")
 
@@ -87,7 +87,7 @@ ggplot(sum_metadata,
                  fill="grey") + 
   theme_bw()
 
-ggsave("FiguresTables/pres_hist.png", 
+ggsave("figuresTables/pres_hist.png", 
        width = 4, height = 3, units = "in", 
        device = "png")
 ```
@@ -100,7 +100,7 @@ ggplot(sum_metadata,
                  fill="grey") + 
   theme_bw()
 
-ggsave("FiguresTables/pres_hist_log.png", 
+ggsave("figuresTables/pres_hist_log.png", 
        width = 4, height = 3, units = "in", 
        device = "png")
 ```
@@ -121,7 +121,7 @@ ggplot(sum_metadata %>%
   # scale_fill_grey()
   scale_fill_viridis_d(option = "C")
 
-ggsave("FiguresTables/pres_order.png", 
+ggsave("figuresTables/pres_order.png", 
        width = 10, height = 6, units = "in", 
        device = "png")
 ```
@@ -292,7 +292,7 @@ ggplot(metadata_plots,
         axis.text.y=element_text(size=5))+
   facet_wrap(~ls_cat, scales="free", ncol=2)
 
-ggsave("FiguresTables/Figure S[lifespan_ridge].png", 
+ggsave("figuresTables/Figure S[lifespan_ridge].png", 
        width = 11.75, height = 16.5*0.9, units = "in", 
        device = "png")
 
@@ -490,7 +490,7 @@ ggarrange(num_hits, hit_len, cpg_oe, ls,
           legend = "bottom", 
           labels = c("A", "B", "C", "D"))
 
-ggsave("FiguresTables/Figure S[prelim_correlations].png", 
+ggsave("figuresTables/Figure S[prelim_correlations].png", 
        width = 8.25, height = 8.25, units = "in", 
        device = "png")
 
@@ -503,7 +503,7 @@ library(ape)
 library(ggtree)
 
 ## read in timetree data
-chordate_tree <- read.tree("DataFiles/chordata_species.nwk") 
+chordate_tree <- read.tree("dataFiles/chordata_species.nwk") 
 
 ## edit tip labels
 chordate_tree$tip.label <- gsub("_", " ", chordate_tree$tip.label)
@@ -554,7 +554,7 @@ gg_zebra <- ggtree(zebra_tree)+
 
 gg_zebra
 
-ggsave("FiguresTables/Figure S[non-ultra_tree].png",
+ggsave("figuresTables/Figure S[non-ultra_tree].png",
        width = 8.25, height = 10.25, units = "in",
        device = "png")
 ```

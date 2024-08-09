@@ -1,10 +1,6 @@
 #!/bin/bash
 
 #SBATCH --job-name=query_blast_dbs          # name the job
-#SBATCH --mail-user=alyssa.budd@csiro.au    # email me ...
-#SBATCH --mail-type=BEGIN                   # ... when the job begins...
-#SBATCH --mail-type=END                     # ... ends ...
-#SBATCH --mail-type=FAIL                    # ... and if it fails.
 
 # Resources allocation request parameters
 #SBATCH --nodes=1 						# specify number of nodes for the job
