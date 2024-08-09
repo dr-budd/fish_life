@@ -1,0 +1,3 @@
+*.slurm linguist-language=Bash
+*.sh linguist-language=Bash
+*.R linguist-language=R
