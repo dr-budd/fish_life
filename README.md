@@ -1,10 +1,10 @@
 # :tropical_fish::dna: Fish lifepsan prediction from genomic data
 
-Analysis pipeline for:
+## :page_facing_up: Associated Publication
 
->Budd, A.M., Mayne, B., Berry, O. and Jarman, S., 2023. Fish species lifespan prediction from promoter cytosine‐phosphate‐guanine density. Molecular Ecology Resources.
+[![Journal](https://img.shields.io/badge/Published_in-Molecular_Ecology_Resources-0072B8.svg)](https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13774)
 
-:memo: https://doi.org/10.1111/1755-0998.13774
+> **Budd, A.M.**, Mayne, B., Berry, O. & Jarman, S. (2025). Fish species lifespan prediction from promoter cytosine-phosphate-guanine density. *Molecular Ecology Resources*, **25**, e13774. [https://doi.org/10.1111/1755-0998.13774](https://doi.org/10.1111/1755-0998.13774)
 
 ---
 
