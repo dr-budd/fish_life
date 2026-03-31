@@ -1,2 +1,7 @@
 *.slurm linguist-language=Shell
 *.sh linguist-language=Shell
+*.R linguist-language=R
+*.Rmd linguist-language=R
+
+dataFiles/** linguist-vendored
+figuresTables/** linguist-vendored
